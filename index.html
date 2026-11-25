@@ -1,0 +1,1724 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brace Cutout Designer</title>
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<!-- status bar / Safari toolbar colour = header colour, so no coloured band around the app -->
+<meta name="theme-color" content="#fcfcfb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1a1a19" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Brace Designer">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f3f2ef; --surface: #fcfcfb; --surface-2: #f0efec; --border: #dddcd7;
+    --ink: #0b0b0b; --ink-2: #52514e; --muted: #85847f;
+    --fill-neutral: #e2dfd8;                       /* 2D material */
+    --mat-out: #ebe7df; --mat-in: #bdb7ab; --mat-edge: #cfc9bd;   /* 3D brace */
+    --body: #b9bec4;                               /* 3D body scan */
+    --wire: #52514e; --grid: #b9b7b0; --outline: #0b0b0b;
+    --select: #6250d6;
+    --tier-bg: #e1e7f3; --tier-ink: #2d4573;
+    --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
+    --s0: #cde2fb; --s1: #9ec5f4; --s2: #6da7ec; --s3: #3987e5; --s4: #1c5cab; --s5: #0d366b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #121211; --surface: #1a1a19; --surface-2: #242422; --border: #33332f;
+      --ink: #f0efec; --ink-2: #c3c2b7; --muted: #8f8e86;
+      --fill-neutral: #3a3936; --mat-out: #d6d1c7; --mat-in: #8e887d; --mat-edge: #aaa498; --body: #6b7178;
+      --wire: #c3c2b7; --grid: #4a4a45; --outline: #f0efec; --select: #9085e9;
+      --tier-bg: #26324a; --tier-ink: #b9c9ea;
+      --s0: #104281; --s1: #1c5cab; --s2: #2a78d6; --s3: #5598e7; --s4: #86b6ef; --s5: #cde2fb;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #121211; --surface: #1a1a19; --surface-2: #242422; --border: #33332f;
+    --ink: #f0efec; --ink-2: #c3c2b7; --muted: #8f8e86;
+    --fill-neutral: #3a3936; --mat-out: #d6d1c7; --mat-in: #8e887d; --mat-edge: #aaa498; --body: #6b7178;
+    --wire: #c3c2b7; --grid: #4a4a45; --outline: #f0efec; --select: #9085e9;
+    --tier-bg: #26324a; --tier-ink: #b9c9ea;
+    --s0: #104281; --s1: #1c5cab; --s2: #2a78d6; --s3: #5598e7; --s4: #86b6ef; --s5: #cde2fb;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }      /* a class with display:flex must not un-hide an element */
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr);
+  }
+  header.bar, footer { min-width: 0; }
+  header.bar {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 26px;
+    background: var(--surface); border-bottom: 1px solid var(--border); padding: 11px 16px 9px;
+  }
+  h1 { font-size: 16px; margin: 0; font-weight: 600; display: inline; }
+  .src { color: var(--muted); margin-left: 8px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; }
+  .stats div { display: flex; gap: 6px; align-items: baseline; }
+  .stats dt { color: var(--ink-2); }
+  .stats dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .layout { display: grid; grid-template-columns: 252px minmax(0, 1.2fr) minmax(0, 1fr); gap: 1px; background: var(--border); min-height: 0; }
+  .side { background: var(--surface); overflow-y: auto; padding: 10px 14px 16px; }
+  .side section { padding: 10px 0 12px; border-bottom: 1px solid var(--border); }
+  .side section:last-child { border-bottom: none; }
+  .side h2 { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 8px; }
+  .tools { display: grid; gap: 4px; }
+  button {
+    font: inherit; color: var(--ink); background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer; text-align: left;
+  }
+  button:hover:not(:disabled) { border-color: var(--ink-2); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.tool[aria-pressed="true"] { border-color: var(--select); box-shadow: inset 3px 0 0 var(--select); background: var(--surface); }
+  kbd { font: 11px/1 ui-monospace, Consolas, monospace; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 1px 4px; margin-right: 6px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 4px; }
+  .row2 button { text-align: center; }
+  .row2 .full { grid-column: 1 / -1; }
+  .help { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+  .slider { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; margin: 6px 0; }
+  .slider input { grid-column: 1 / -1; width: 100%; accent-color: var(--select); }
+  .slider output { font-variant-numeric: tabular-nums; color: var(--ink); }
+  .sel { margin-top: 10px; padding: 8px; border: 1px solid var(--select); border-radius: 6px; }
+  .sel-title { color: var(--ink-2); }
+  .checks { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 5px; }
+  .checks li { display: grid; grid-template-columns: 16px 1fr; gap: 4px; align-items: start; }
+  .ic { font-weight: 700; text-align: center; }
+  .ic.good { color: var(--good); } .ic.warning { color: var(--warning); } .ic.critical { color: var(--critical); }
+  .checks .note { color: var(--muted); }
+  .toggles { display: grid; gap: 4px; }
+  .toggles label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; user-select: none; }
+  .toggles input { accent-color: var(--select); margin: 0; }
+  .keys { color: var(--muted); font-size: 12px; }
+  .keys p { margin: 2px 0; }
+
+  .pane { position: relative; background: var(--surface); min-height: 280px; overflow: hidden; }
+  .pane canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #ov { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; user-select: none; }
+  .pane-label {
+    position: absolute; top: 8px; left: 10px; z-index: 2; pointer-events: none;
+    color: var(--ink-2); background: color-mix(in srgb, var(--surface) 88%, transparent); padding: 2px 6px; border-radius: 4px;
+  }
+  .readout {
+    position: absolute; left: 10px; bottom: 10px; z-index: 2; pointer-events: none; color: var(--ink-2);
+    background: color-mix(in srgb, var(--surface) 88%, transparent); padding: 2px 6px; border-radius: 4px;
+    font-variant-numeric: tabular-nums; font-size: 12px;
+  }
+  .legend {
+    position: absolute; right: 10px; top: 36px; z-index: 2; pointer-events: none;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 12px;
+  }
+  .legend .title { color: var(--ink-2); margin-bottom: 4px; }
+  .legend .rows { display: grid; grid-template-columns: 12px auto auto; gap: 3px 8px; align-items: center; }
+  .legend .share { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .sw { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+  .scalebar { position: absolute; right: 14px; bottom: 12px; z-index: 2; pointer-events: none; color: var(--ink-2); font-size: 12px; text-align: center; }
+  .scalebar .bar { height: 6px; border: 1.5px solid var(--ink-2); border-top: none; margin-bottom: 2px; }
+  .msg { position: absolute; inset: 0; z-index: 5; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--ink-2); background: var(--surface); }
+  .msg code { background: var(--surface-2); padding: 2px 6px; border-radius: 4px; color: var(--ink); }
+
+  #ov .cut { fill: none; stroke: var(--outline); stroke-width: 1.2; }
+  #ov .cut.hover { stroke-width: 2; }
+  #ov .cut.sel { stroke: var(--select); stroke-width: 2.2; }
+  #ov .cut.clip { stroke-dasharray: 5 3; }
+  #ov .ctrl { fill: none; stroke: var(--select); stroke-width: 1; stroke-dasharray: 2 3; opacity: .7; }
+  #ov .h { fill: var(--surface); stroke: var(--select); stroke-width: 1.8; }
+  #ov .draw { fill: color-mix(in srgb, var(--select) 12%, transparent); stroke: var(--select); stroke-width: 1.8; }
+  #ov .draw.open { fill: none; }
+  #ov .draw.ghost { fill: none; stroke-dasharray: 4 4; stroke-width: 1.2; }
+  #ov .viol { stroke: var(--critical); stroke-width: 2; stroke-dasharray: 4 3; }
+  #ov .viol-dot { fill: var(--critical); }
+  #ov .viol-tag { fill: var(--critical); font: 600 11px system-ui, sans-serif; paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
+
+  footer { background: var(--surface); border-top: 1px solid var(--border); color: var(--ink-2); padding: 7px 16px; display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; }
+  .tier { font-size: 11px; font-weight: 600; letter-spacing: .04em; padding: 1px 6px; border-radius: 4px; background: var(--tier-bg); color: var(--tier-ink); }
+  .offline, .update {
+    position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 20;
+    background: var(--surface); color: var(--ink); border: 1px solid var(--critical); border-radius: 6px;
+    padding: 7px 12px; box-shadow: 0 2px 10px rgba(0,0,0,.15);
+  }
+  .update { border-color: var(--select); display: flex; gap: 10px; align-items: center; }
+  .fs { margin-left: auto; align-self: center; }
+
+  /* touch / Apple Pencil */
+  body { touch-action: manipulation; }
+  .pane { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .float-actions { position: absolute; top: 36px; left: 50%; transform: translateX(-50%); z-index: 3; display: flex; gap: 6px; }
+  .float-actions button { box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+  button.primary { background: var(--select); border-color: var(--select); color: #fff; font-weight: 600; }
+  @media (max-height: 900px) {
+    footer > span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+    footer { flex-wrap: nowrap; }
+  }
+  @media (pointer: coarse) {
+    button { padding: 9px 12px; }
+    .tools { gap: 6px; }
+    .toggles { gap: 8px; }
+    .slider input { height: 30px; }
+  }
+
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns: 232px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+    .side { grid-row: 1 / span 2; }
+  }
+  @media (max-width: 720px) {
+    body { height: auto; grid-template-rows: auto auto auto; }
+    .layout { grid-template-columns: 1fr; grid-template-rows: auto 64vh 52vh; }
+    .side { grid-row: auto; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "./vendor/three/build/three.module.js",
+    "three/addons/": "./vendor/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div class="offline" id="offline" hidden><span class="ic critical">⚠</span> The app has stopped in the background. Your design is saved — close this window and start the app again.</div>
+<div class="update" id="update" hidden>A new version is ready. <button id="update-btn" class="primary">Reload</button></div>
+<header class="bar">
+  <div><h1>Brace Cutout Designer</h1><span class="src" id="src"></span></div>
+  <dl class="stats" id="stats"></dl>
+  <button id="btn-fs" class="fs" hidden>⛶ Full screen</button>
+</header>
+
+<div class="layout">
+  <aside class="side">
+    <section>
+      <h2>Tools</h2>
+      <div class="tools">
+        <button class="tool" data-tool="select" aria-pressed="true"><kbd>V</kbd>Select / edit</button>
+        <button class="tool" data-tool="lasso" aria-pressed="false"><kbd>L</kbd>Lasso cutout</button>
+        <button class="tool" data-tool="poly" aria-pressed="false"><kbd>P</kbd>Point-by-point cutout</button>
+      </div>
+      <p class="help" id="tool-help"></p>
+    </section>
+
+    <section>
+      <h2>Cutouts</h2>
+      <div class="row2">
+        <button id="btn-original" class="full">Load original openings</button>
+        <button id="btn-clear" class="full">Clear all</button>
+        <button id="btn-undo" title="Ctrl+Z">↶ Undo</button>
+        <button id="btn-redo" title="Ctrl+Y">↷ Redo</button>
+      </div>
+      <div class="sel" id="sel-panel" hidden>
+        <div class="sel-title">Selected cutout <span id="sel-info"></span></div>
+        <label class="slider">Scale (relative) <output id="sel-scale-out">100%</output>
+          <input type="range" id="sel-scale" min="50" max="150" value="100"></label>
+        <button id="btn-del">Delete cutout (Del)</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Brace</h2>
+      <label class="slider">Shell thickness <output id="thick-out">5.0 mm</output>
+        <input type="range" id="thick" min="1" max="10" step="0.5" value="5"></label>
+      <label class="slider">Min. web width / edge margin <output id="rim-out">8 mm</output>
+        <input type="range" id="rim" min="2" max="30" step="1" value="8"></label>
+      <ul class="checks" id="checks"></ul>
+    </section>
+
+    <section>
+      <h2>Display</h2>
+      <div class="toggles">
+        <label><input type="checkbox" id="lyr-body" checked> Body scan</label>
+        <label><input type="checkbox" id="lyr-strain"> Flattening stretch</label>
+        <label><input type="checkbox" id="lyr-wire"> Triangle mesh</label>
+        <label><input type="checkbox" id="lyr-grid"> 10 mm grid (2D)</label>
+        <label id="lyr-overlap-wrap" hidden><input type="checkbox" id="lyr-overlap" checked> Self-overlap zone</label>
+      </div>
+    </section>
+
+    <section>
+      <h2>Export</h2>
+      <div class="row2">
+        <button id="btn-svg" class="full">Export SVG pattern (1:1 mm)</button>
+        <button id="btn-save">Save design</button>
+        <button id="btn-open">Open design</button>
+      </div>
+      <input type="file" id="file-open" accept=".json,application/json" hidden>
+    </section>
+
+    <section class="keys" id="keys">
+      <p>Wheel: zoom · F: fit view</p>
+      <p>Right / middle drag, or Space + drag: pan</p>
+      <p>Ctrl+Z / Ctrl+Y: undo / redo</p>
+    </section>
+  </aside>
+
+  <section class="pane" id="pane2d">
+    <div class="pane-label">Flat pattern · seen from outside · mm</div>
+    <canvas id="c2d"></canvas>
+    <svg id="ov"></svg>
+    <div class="float-actions" id="poly-actions" hidden>
+      <button id="poly-close" class="primary">✓ Close shape</button>
+      <button id="poly-back">↶ Last point</button>
+      <button id="poly-cancel">✕ Cancel</button>
+    </div>
+    <div class="legend" id="legend" hidden></div>
+    <div class="readout" id="readout"></div>
+    <div class="scalebar" id="scalebar"><div class="bar"></div><span></span></div>
+  </section>
+
+  <section class="pane" id="pane3d">
+    <div class="pane-label" id="label3d">3D preview on body · left drag: rotate · right drag: pan · wheel: zoom</div>
+    <canvas id="c3d"></canvas>
+  </section>
+</div>
+
+<footer>
+  <span class="tier">COMPUTED · geometry</span>
+  <span><b>Research prototype, not a medical device.</b> Simulated body model. The 2D canvas is the flattened skin-side surface of the complete brace (original openings closed, conformed to the body scan). Cutout positions on the 3D brace are exact; the final cut pattern of a design still has to be re-flattened.</span>
+</footer>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+
+// ================================================================== constants & helpers
+const BIN_EDGES = [0.005, 0.01, 0.02, 0.03, 0.05];
+const BIN_LABELS = ['< 0.5%', '0.5 – 1%', '1 – 2%', '2 – 3%', '3 – 5%', '≥ 5%'];
+const RAMP_VARS = ['--s0', '--s1', '--s2', '--s3', '--s4', '--s5'];
+const COARSE = matchMedia('(pointer: coarse)').matches;        // touch screen (iPad, phone)
+const MASK_HI = COARSE ? 2048 : 3072, MASK_LO = COARSE ? 1024 : 1536;   // smaller masks: iPad memory
+const $ = (id) => document.getElementById(id);
+const tok = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const color = (n) => new THREE.Color(tok(n));
+const fmt = (x, d = 1) => Number(x).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+const pct = (x, d = 1) => `${(x * 100).toFixed(d)}%`;
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+
+function polyArea(P) {
+  let s = 0;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) s += P[j][0] * P[i][1] - P[i][0] * P[j][1];
+  return s / 2;
+}
+function pointInPoly(x, y, P) {
+  let inside = false;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
+    const xi = P[i][0], yi = P[i][1], xj = P[j][0], yj = P[j][1];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function bboxOf(P) {
+  let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity;
+  for (const p of P) { a = Math.min(a, p[0]); b = Math.min(b, p[1]); c = Math.max(c, p[0]); d = Math.max(d, p[1]); }
+  return { x0: a, y0: b, x1: c, y1: d };
+}
+function centroid(P) { let x = 0, y = 0; for (const p of P) { x += p[0]; y += p[1]; } return [x / P.length, y / P.length]; }
+function perimeter(P) { let s = 0; for (let i = 0; i < P.length; i++) s += dist(P[i], P[(i + 1) % P.length]); return s; }
+function resampleClosed(P, n) {
+  const L = perimeter(P), out = [];
+  let i = 0, acc = 0;
+  for (let k = 0; k < n; k++) {
+    const target = (k / n) * L;
+    while (acc + dist(P[i], P[(i + 1) % P.length]) < target && i < P.length - 1) { acc += dist(P[i], P[(i + 1) % P.length]); i++; }
+    const a = P[i], b = P[(i + 1) % P.length], seg = dist(a, b) || 1e-9, t = (target - acc) / seg;
+    out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+  }
+  return out;
+}
+function smoothClosed(P, passes = 1) {
+  let Q = P;
+  for (let p = 0; p < passes; p++) {
+    Q = Q.map((q, i) => {
+      const a = Q[(i - 1 + Q.length) % Q.length], b = Q[(i + 1) % Q.length];
+      return [0.5 * q[0] + 0.25 * (a[0] + b[0]), 0.5 * q[1] + 0.25 * (a[1] + b[1])];
+    });
+  }
+  return Q;
+}
+// closed centripetal Catmull-Rom through the control points
+function splineClosed(P, per = 10) {
+  const n = P.length, out = [];
+  if (n < 3) return P.slice();
+  for (let i = 0; i < n; i++) {
+    const p0 = P[(i - 1 + n) % n], p1 = P[i], p2 = P[(i + 1) % n], p3 = P[(i + 2) % n];
+    const t01 = Math.sqrt(dist(p0, p1)) || 1e-4, t12 = Math.sqrt(dist(p1, p2)) || 1e-4, t23 = Math.sqrt(dist(p2, p3)) || 1e-4;
+    const m1 = [0, 0], m2 = [0, 0];
+    for (let k = 0; k < 2; k++) {
+      m1[k] = ((p1[k] - p0[k]) / t01 - (p2[k] - p0[k]) / (t01 + t12) + (p2[k] - p1[k]) / t12) * t12;
+      m2[k] = ((p2[k] - p1[k]) / t12 - (p3[k] - p1[k]) / (t12 + t23) + (p3[k] - p2[k]) / t23) * t12;
+    }
+    for (let s = 0; s < per; s++) {
+      const t = s / per, t2 = t * t, t3 = t2 * t;
+      const h00 = 2 * t3 - 3 * t2 + 1, h10 = t3 - 2 * t2 + t, h01 = -2 * t3 + 3 * t2, h11 = t3 - t2;
+      out.push([h00 * p1[0] + h10 * m1[0] + h01 * p2[0] + h11 * m2[0], h00 * p1[1] + h10 * m1[1] + h01 * p2[1] + h11 * m2[1]]);
+    }
+  }
+  return out;
+}
+function segDist2(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+  const t = L ? clamp(((px - ax) * dx + (py - ay) * dy) / L, 0, 1) : 0;
+  const qx = ax + t * dx, qy = ay + t * dy;
+  return [(qx - px) ** 2 + (qy - py) ** 2, qx, qy];
+}
+function polyMinDist(A, B) {
+  let best = { d2: Infinity, pa: null, pb: null };
+  const one = (P, Q, swap) => {
+    for (const p of P) for (let j = 0; j < Q.length; j++) {
+      const a = Q[j], b = Q[(j + 1) % Q.length];
+      const [d2, qx, qy] = segDist2(p[0], p[1], a[0], a[1], b[0], b[1]);
+      if (d2 < best.d2) best = swap ? { d2, pa: [qx, qy], pb: p } : { d2, pa: p, pb: [qx, qy] };
+    }
+  };
+  one(A, B, false);
+  one(B, A, true);
+  return { d: Math.sqrt(best.d2), pa: best.pa, pb: best.pb };
+}
+// Ramer-Douglas-Peucker on a closed loop
+function simplifyClosed(P, eps) {
+  if (P.length < 8) return P;
+  const keep = new Uint8Array(P.length);
+  const rdp = (a, b) => {
+    let idx = -1, dmax = 0;
+    for (let i = a + 1; i < b; i++) {
+      const [d2] = segDist2(P[i][0], P[i][1], P[a][0], P[a][1], P[b][0], P[b][1]);
+      if (d2 > dmax) { dmax = d2; idx = i; }
+    }
+    if (dmax > eps * eps) { keep[idx] = 1; rdp(a, idx); rdp(idx, b); }
+  };
+  const h = Math.floor(P.length / 2);
+  keep[0] = keep[h] = 1;
+  rdp(0, h);
+  const Q = P.concat([P[0]]);
+  const rdp2 = (a, b) => {
+    let idx = -1, dmax = 0;
+    for (let i = a + 1; i < b; i++) {
+      const [d2] = segDist2(Q[i][0], Q[i][1], Q[a][0], Q[a][1], Q[b][0], Q[b][1]);
+      if (d2 > dmax) { dmax = d2; idx = i; }
+    }
+    if (dmax > eps * eps) { keep[idx % P.length] = 1; rdp2(a, idx); rdp2(idx, b); }
+  };
+  rdp2(h, P.length);
+  return P.filter((_, i) => keep[i]);
+}
+
+function showMessage(html) {
+  for (const id of ['pane2d', 'pane3d']) {
+    const m = document.createElement('div');
+    m.className = 'msg';
+    m.innerHTML = html;
+    $(id).appendChild(m);
+  }
+}
+
+// ================================================================== data
+function prepare(d, body) {
+  const F = Uint32Array.from(d.faces), UV = Float32Array.from(d.uv), XYZ = Float32Array.from(d.xyz), S = Float32Array.from(d.stretch);
+  const nv = UV.length / 2, nf = F.length / 3;
+  const N = d.normals ? Float32Array.from(d.normals) : null;
+  const strain = new Float32Array(nf), cls = new Uint8Array(nf), area2 = new Float32Array(nf);
+  for (let f = 0; f < nf; f++) {
+    const e = Math.max(Math.abs(S[2 * f] - 1), Math.abs(S[2 * f + 1] - 1));
+    strain[f] = e;
+    let c = 0;
+    while (c < BIN_EDGES.length && e >= BIN_EDGES[c]) c++;
+    cls[f] = c;
+    const a = F[3 * f], b = F[3 * f + 1], g = F[3 * f + 2];
+    area2[f] = 0.5 * Math.abs((UV[2 * b] - UV[2 * a]) * (UV[2 * g + 1] - UV[2 * a + 1]) - (UV[2 * g] - UV[2 * a]) * (UV[2 * b + 1] - UV[2 * a + 1]));
+  }
+  // outward normals (away from the body) and the winding that makes face normals point outward
+  let windDot = 0;
+  for (let f = 0; f < nf; f += 7) {
+    const a = F[3 * f], b = F[3 * f + 1], c = F[3 * f + 2];
+    const ux = XYZ[3 * b] - XYZ[3 * a], uy = XYZ[3 * b + 1] - XYZ[3 * a + 1], uz = XYZ[3 * b + 2] - XYZ[3 * a + 2];
+    const vx = XYZ[3 * c] - XYZ[3 * a], vy = XYZ[3 * c + 1] - XYZ[3 * a + 1], vz = XYZ[3 * c + 2] - XYZ[3 * a + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    windDot += nx * N[3 * a] + ny * N[3 * a + 1] + nz * N[3 * a + 2];
+  }
+  const flipWinding = windDot < 0;
+  const seen = new Set(), edges = [];
+  let edgeSum = 0;
+  for (let f = 0; f < nf; f++) for (let k = 0; k < 3; k++) {
+    const a = F[3 * f + k], b = F[3 * f + (k + 1) % 3], lo = Math.min(a, b), hi = Math.max(a, b), key = lo * nv + hi;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    edges.push(lo, hi);
+    edgeSum += Math.hypot(UV[2 * a] - UV[2 * b], UV[2 * a + 1] - UV[2 * b + 1]);
+  }
+  let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+  for (let i = 0; i < nv; i++) {
+    minx = Math.min(minx, UV[2 * i]); maxx = Math.max(maxx, UV[2 * i]);
+    miny = Math.min(miny, UV[2 * i + 1]); maxy = Math.max(maxy, UV[2 * i + 1]);
+  }
+  let r3 = 0;
+  for (let i = 0; i < XYZ.length; i += 3) r3 = Math.max(r3, Math.hypot(XYZ[i], XYZ[i + 1], XYZ[i + 2]));
+  let rb = 0;
+  if (body) for (let i = 0; i < body.xyz.length; i += 3) rb = Math.max(rb, Math.hypot(body.xyz[i], body.xyz[i + 1], body.xyz[i + 2]));
+  const pad = 6;
+  const frame = { x0: minx - pad, y0: miny - pad, W: maxx - minx + 2 * pad, H: maxy - miny + 2 * pad };
+  const overlap = Uint32Array.from(d.overlap_faces || []);
+  const overlapPts = Array.from(overlap, (f) => {
+    let x = 0, y = 0;
+    for (let k = 0; k < 3; k++) { x += UV[2 * F[3 * f + k]] / 3; y += UV[2 * F[3 * f + k] + 1] / 3; }
+    return [x, y];
+  });
+  const m = d.meta;
+  return {
+    meta: m, F, UV, XYZ, N, S, nv, nf, strain, cls, area2, overlap, overlapPts, flipWinding,
+    edges: Uint32Array.from(edges), meanEdge: edgeSum / (edges.length / 2),
+    outlineIdx: d.outer, holeIdx: d.holes || [],
+    outline: d.outer.map((i) => [UV[2 * i], UV[2 * i + 1]]),
+    originalCutouts: d.original_cutouts || [],
+    bbox: { minx, miny, maxx, maxy }, frame, radius3: r3, radiusBody: rb,
+    area3to2: m.area3d_mm2 / m.area2d_mm2,
+    body,
+  };
+}
+
+// ================================================================== geometry builders
+function vtx2(D, i, out, o) { out[o] = D.UV[2 * i]; out[o + 1] = D.UV[2 * i + 1]; out[o + 2] = 0; }
+function vtx3(D, i, t, out, o) {
+  out[o] = D.XYZ[3 * i] + t * D.N[3 * i];
+  out[o + 1] = D.XYZ[3 * i + 1] + t * D.N[3 * i + 1];
+  out[o + 2] = D.XYZ[3 * i + 2] + t * D.N[3 * i + 2];
+}
+function maskUV(D, i, out, o) {
+  out[o] = (D.UV[2 * i] - D.frame.x0) / D.frame.W;
+  out[o + 1] = (D.UV[2 * i + 1] - D.frame.y0) / D.frame.H;
+}
+// corner order: in 3D the winding is made to point outward (away from the body)
+const corners = (D, f, dim) => (dim === 3 && D.flipWinding) ? [D.F[3 * f], D.F[3 * f + 2], D.F[3 * f + 1]] : [D.F[3 * f], D.F[3 * f + 1], D.F[3 * f + 2]];
+
+function fillGeometry2D(D) {
+  const pos = new Float32Array(D.nf * 9), uv = new Float32Array(D.nf * 6);
+  for (let f = 0; f < D.nf; f++) corners(D, f, 2).forEach((i, k) => { vtx2(D, i, pos, 9 * f + 3 * k); maskUV(D, i, uv, 6 * f + 2 * k); });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(D.nf * 9).fill(1), 3));
+  return g;
+}
+function sheetGeometry3D(D, t, colorAttr) {
+  const pos = new Float32Array(D.nf * 9), uv = new Float32Array(D.nf * 6), nrm = new Float32Array(D.nf * 9);
+  for (let f = 0; f < D.nf; f++) corners(D, f, 3).forEach((i, k) => {
+    vtx3(D, i, t, pos, 9 * f + 3 * k);
+    maskUV(D, i, uv, 6 * f + 2 * k);
+    for (let d = 0; d < 3; d++) nrm[9 * f + 3 * k + d] = D.N[3 * i + d];
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
+  g.setAttribute('color', colorAttr);
+  g.computeBoundingSphere();
+  return g;
+}
+function offsetSheet(D, g, t) {
+  const pos = g.attributes.position.array;
+  for (let f = 0; f < D.nf; f++) corners(D, f, 3).forEach((i, k) => vtx3(D, i, t, pos, 9 * f + 3 * k));
+  g.attributes.position.needsUpdate = true;
+  g.computeBoundingSphere();
+}
+function subsetGeometry(D, faces, dim, t = 0) {
+  const pos = new Float32Array(faces.length * 9);
+  faces.forEach((f, j) => corners(D, f, dim).forEach((i, k) => dim === 2 ? vtx2(D, i, pos, 9 * j + 3 * k) : vtx3(D, i, t, pos, 9 * j + 3 * k)));
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  return g;
+}
+function wireGeometry(D, dim, t = 0) {
+  const n = D.edges.length / 2, pos = new Float32Array(n * 6), uv = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    const a = D.edges[2 * i], b = D.edges[2 * i + 1];
+    if (dim === 2) { vtx2(D, a, pos, 6 * i); vtx2(D, b, pos, 6 * i + 3); } else { vtx3(D, a, t, pos, 6 * i); vtx3(D, b, t, pos, 6 * i + 3); }
+    maskUV(D, a, uv, 4 * i); maskUV(D, b, uv, 4 * i + 2);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return g;
+}
+function segmentsGeometry(seg) {
+  const g = new LineSegmentsGeometry();
+  g.setPositions(seg.length ? seg : [0, 0, 0, 0, 0, 0]);
+  return g;
+}
+function paintColors(D, attr, strainOn) {
+  const ramp = RAMP_VARS.map(color), c = attr.array;
+  for (let f = 0; f < D.nf; f++) {
+    const col = strainOn ? ramp[D.cls[f]] : null;
+    for (let k = 0; k < 3; k++) {
+      const o = 9 * f + 3 * k;
+      c[o] = col ? col.r : 1; c[o + 1] = col ? col.g : 1; c[o + 2] = col ? col.b : 1;
+    }
+  }
+  attr.needsUpdate = true;
+}
+
+// pattern point -> triangle (uniform grid of triangle buckets); nearest=true clamps points just outside
+function buildPicker(D) {
+  const { minx, miny, maxx, maxy } = D.bbox, cell = Math.max(4 * D.meanEdge, 1);
+  const nx = Math.ceil((maxx - minx) / cell) + 1, ny = Math.ceil((maxy - miny) / cell) + 1;
+  const buckets = Array.from({ length: nx * ny }, () => []);
+  const U = D.UV, F = D.F;
+  for (let f = 0; f < D.nf; f++) {
+    const a = F[3 * f], b = F[3 * f + 1], c = F[3 * f + 2];
+    const x0 = Math.min(U[2 * a], U[2 * b], U[2 * c]), x1 = Math.max(U[2 * a], U[2 * b], U[2 * c]);
+    const y0 = Math.min(U[2 * a + 1], U[2 * b + 1], U[2 * c + 1]), y1 = Math.max(U[2 * a + 1], U[2 * b + 1], U[2 * c + 1]);
+    for (let iy = Math.floor((y0 - miny) / cell); iy <= Math.floor((y1 - miny) / cell); iy++)
+      for (let ix = Math.floor((x0 - minx) / cell); ix <= Math.floor((x1 - minx) / cell); ix++) buckets[iy * nx + ix].push(f);
+  }
+  const bary = (f, x, y) => {
+    const a = F[3 * f], b = F[3 * f + 1], c = F[3 * f + 2], ax = U[2 * a], ay = U[2 * a + 1];
+    const e0x = U[2 * b] - ax, e0y = U[2 * b + 1] - ay, e1x = U[2 * c] - ax, e1y = U[2 * c + 1] - ay;
+    const px = x - ax, py = y - ay, den = e0x * e1y - e1x * e0y;
+    if (den === 0) return null;
+    const w1 = (px * e1y - e1x * py) / den, w2 = (e0x * py - px * e0y) / den;
+    return [1 - w1 - w2, w1, w2];
+  };
+  return (x, y, nearest = false) => {
+    const ix = Math.floor((x - minx) / cell), iy = Math.floor((y - miny) / cell);
+    let best = null, bestOut = Infinity;
+    for (let jy = iy - (nearest ? 1 : 0); jy <= iy + (nearest ? 1 : 0); jy++) for (let jx = ix - (nearest ? 1 : 0); jx <= ix + (nearest ? 1 : 0); jx++) {
+      if (jx < 0 || jy < 0 || jx >= nx || jy >= ny) continue;
+      for (const f of buckets[jy * nx + jx]) {
+        const w = bary(f, x, y);
+        if (!w) continue;
+        const out = Math.max(0, -w[0], -w[1], -w[2]);
+        if (out <= 1e-6) return { f, w };
+        if (nearest && out < bestOut) { bestOut = out; best = { f, w }; }
+      }
+    }
+    if (best) {
+      const w = best.w.map((v) => Math.max(0, v)), s = w[0] + w[1] + w[2];
+      return { f: best.f, w: w.map((v) => v / s) };
+    }
+    return null;
+  };
+}
+
+// ================================================================== mask (the design, raster, in pattern space)
+class Mask {
+  constructor(D, width) {
+    this.D = D;
+    const f = D.frame;
+    this.k = width / f.W;
+    this.c = document.createElement('canvas');
+    this.c.width = width;
+    this.c.height = Math.round(f.H * this.k);
+    this.ctx = this.c.getContext('2d', { willReadFrequently: true });
+    this.tex = new THREE.CanvasTexture(this.c);
+    this.tex.anisotropy = 4;
+    this.outline = this.path(D.outline);
+    this.holes = D.holeIdx.map((L) => this.path(L.map((i) => [D.UV[2 * i], D.UV[2 * i + 1]])));
+  }
+  path(P) {
+    const f = this.D.frame, k = this.k, p = new Path2D();
+    P.forEach((q, i) => { const x = (q[0] - f.x0) * k, y = (f.y0 + f.H - q[1]) * k; i ? p.lineTo(x, y) : p.moveTo(x, y); });
+    p.closePath();
+    return p;
+  }
+  draw(polys, rim) {
+    const ctx = this.ctx;
+    ctx.clearRect(0, 0, this.c.width, this.c.height);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#fff';
+    ctx.fill(this.outline);
+    ctx.globalCompositeOperation = 'destination-out';
+    for (const h of this.holes) ctx.fill(h);
+    for (const P of polys) ctx.fill(this.path(P));
+    ctx.globalCompositeOperation = 'source-over';
+    if (rim > 0) {
+      ctx.save();
+      ctx.clip(this.outline);
+      ctx.lineWidth = 2 * rim * this.k;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = '#fff';
+      ctx.stroke(this.outline);
+      ctx.restore();
+    }
+    this.tex.needsUpdate = true;
+    this._img = null;
+  }
+  alpha() { return (this._img ||= this.ctx.getImageData(0, 0, this.c.width, this.c.height).data); }
+  materialPixels() { const d = this.alpha(); let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 127) n++; return n; }
+  // marching squares on the material mask -> closed loops in pattern coordinates
+  contours() {
+    const W = this.c.width, H = this.c.height, data = this.alpha(), GW = W + 2, GH = H + 2;
+    const g = new Uint8Array(GW * GH);
+    for (let y = 0; y < H; y++) { const row = (y + 1) * GW + 1, src = y * W; for (let x = 0; x < W; x++) g[row + x] = data[(src + x) * 4 + 3] > 127 ? 1 : 0; }
+    const link = new Map();
+    const add = (a, b) => {
+      let l = link.get(a); if (!l) link.set(a, (l = [])); l.push(b);
+      let m = link.get(b); if (!m) link.set(b, (m = [])); m.push(a);
+    };
+    for (let y = 0; y < GH - 1; y++) for (let x = 0; x < GW - 1; x++) {
+      const i = y * GW + x;
+      const tl = g[i], tr = g[i + 1], br = g[i + GW + 1], bl = g[i + GW];
+      const code = tl * 8 + tr * 4 + br * 2 + bl;
+      if (code === 0 || code === 15) continue;
+      const T = 2 * i, B = 2 * (i + GW), L = 2 * i + 1, R = 2 * (i + 1) + 1;
+      if (code === 5) { add(T, R); add(L, B); continue; }
+      if (code === 10) { add(T, L); add(R, B); continue; }
+      const e = [];
+      if (tl !== tr) e.push(T);
+      if (tr !== br) e.push(R);
+      if (bl !== br) e.push(B);
+      if (tl !== bl) e.push(L);
+      add(e[0], e[1]);
+    }
+    const f = this.D.frame, k = this.k;
+    const pt = (id) => {
+      const cell = id >> 1, x = cell % GW, y = (cell - x) / GW;
+      const cx = (id & 1) ? x - 0.5 : x, cy = (id & 1) ? y : y - 0.5;   // canvas coordinates
+      return [f.x0 + cx / k, f.y0 + f.H - cy / k];
+    };
+    const seen = new Set(), loops = [];
+    for (const start of link.keys()) {
+      if (seen.has(start)) continue;
+      const loop = [];
+      let prev = -1, cur = start;
+      while (cur !== undefined && !seen.has(cur)) {
+        seen.add(cur);
+        loop.push(pt(cur));
+        const nb = link.get(cur), next = nb[0] !== prev ? nb[0] : nb[1];
+        prev = cur;
+        cur = next;
+      }
+      if (loop.length > 3) loops.push(simplifyClosed(loop, 0.6 / k));
+    }
+    return loops;
+  }
+}
+
+function marker2D() {
+  const g = new THREE.Group();
+  const ring = new THREE.Mesh(new THREE.CircleGeometry(1.45, 24), new THREE.MeshBasicMaterial());
+  const dot = new THREE.Mesh(new THREE.CircleGeometry(1, 24), new THREE.MeshBasicMaterial());
+  dot.position.z = 0.01;
+  g.add(ring, dot);
+  g.userData = { ring, dot };
+  g.visible = false;
+  return g;
+}
+
+// ================================================================== 2D base view (WebGL)
+class View2D {
+  constructor(canvas, D, tex, onView) {
+    this.canvas = canvas; this.D = D; this.onView = onView;
+    this.r = new THREE.WebGLRenderer({ canvas, antialias: true });
+    this.r.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.scene = new THREE.Scene();
+    this.cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 50);
+    this.cx = 0; this.cy = 0; this.scale = 1; this.w = 1; this.h = 1;
+    this.fill = new THREE.Mesh(fillGeometry2D(D), new THREE.MeshBasicMaterial({ vertexColors: true, map: tex, alphaTest: 0.5, side: THREE.DoubleSide }));
+    this.wire = new THREE.LineSegments(wireGeometry(D, 2), new THREE.LineBasicMaterial({ map: tex, alphaTest: 0.5, transparent: true, depthWrite: false }));
+    this.wire.position.z = 0.2;
+    this.wire.visible = false;
+    this.outlineMat = new LineMaterial({ linewidth: 1.6 });
+    const seg = [];
+    for (const L of [D.outlineIdx, ...D.holeIdx]) for (let i = 0; i < L.length; i++) {
+      const a = L[i], b = L[(i + 1) % L.length];
+      seg.push(D.UV[2 * a], D.UV[2 * a + 1], 0, D.UV[2 * b], D.UV[2 * b + 1], 0);
+    }
+    this.outline = new LineSegments2(segmentsGeometry(seg), this.outlineMat);
+    this.outline.position.z = 0.3;
+    this.grid = this.makeGrid();
+    this.grid.position.z = 0.1;
+    this.grid.visible = false;
+    this.overlap = new THREE.Mesh(subsetGeometry(D, D.overlap, 2), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }));
+    this.overlap.position.z = 0.15;
+    this.mark = marker2D();
+    this.mark.position.z = 0.5;
+    this.scene.add(this.fill, this.grid, this.overlap, this.wire, this.outline, this.mark);
+  }
+  makeGrid() {
+    const { minx, miny, maxx, maxy } = this.D.bbox, pad = 50;
+    const x0 = Math.floor((minx - pad) / 10) * 10, x1 = Math.ceil((maxx + pad) / 10) * 10;
+    const y0 = Math.floor((miny - pad) / 10) * 10, y1 = Math.ceil((maxy + pad) / 10) * 10;
+    const minor = [], major = [];
+    for (let x = x0; x <= x1; x += 10) (x % 50 === 0 ? major : minor).push(x, y0, 0, x, y1, 0);
+    for (let y = y0; y <= y1; y += 10) (y % 50 === 0 ? major : minor).push(x0, y, 0, x1, y, 0);
+    const mk = (arr, op) => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+      return new THREE.LineSegments(g, new THREE.LineBasicMaterial({ transparent: true, opacity: op, depthWrite: false }));
+    };
+    const grp = new THREE.Group();
+    grp.add(mk(minor, 0.45), mk(major, 0.9));
+    return grp;
+  }
+  toWorld(px, py) { return { x: this.cx + (px - this.w / 2) / this.scale, y: this.cy - (py - this.h / 2) / this.scale }; }
+  toScreen(x, y) { return [(x - this.cx) * this.scale + this.w / 2, (this.cy - y) * this.scale + this.h / 2]; }
+  zoomAt(px, py, factor) {
+    const before = this.toWorld(px, py);
+    this.scale = clamp(this.scale * factor, 0.05, 200);
+    const after = this.toWorld(px, py);
+    this.cx += before.x - after.x; this.cy += before.y - after.y;
+    this.update();
+  }
+  panBy(dx, dy) { this.cx -= dx / this.scale; this.cy += dy / this.scale; this.update(); }
+  resize() {
+    this.w = Math.max(1, this.canvas.clientWidth); this.h = Math.max(1, this.canvas.clientHeight);
+    this.r.setSize(this.w, this.h, false);
+    this.outlineMat.resolution.set(this.w, this.h);
+    this.update();
+  }
+  fit() {
+    const { minx, miny, maxx, maxy } = this.D.bbox;
+    this.scale = Math.min(this.w / ((maxx - minx) * 1.08), this.h / ((maxy - miny) * 1.16));
+    this.cx = (minx + maxx) / 2; this.cy = (miny + maxy) / 2;
+    this.update();
+  }
+  update() {
+    const hw = this.w / 2 / this.scale, hh = this.h / 2 / this.scale;
+    Object.assign(this.cam, { left: -hw, right: hw, top: hh, bottom: -hh });
+    this.cam.position.set(this.cx, this.cy, 10);
+    this.cam.updateProjectionMatrix();
+    this.wire.material.opacity = clamp((this.scale * this.D.meanEdge - 2) / 16, 0.07, 0.5);
+    this.mark.scale.setScalar(4.5 / this.scale);
+    const nice = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+    const L = nice.find((n) => n * this.scale >= 70) || 1000;
+    $('scalebar').querySelector('.bar').style.width = `${L * this.scale}px`;
+    $('scalebar').querySelector('span').textContent = `${L} mm`;
+    this.render();
+    this.onView && this.onView();
+  }
+  setMarker(u, v) { this.mark.position.set(u, v, 0.5); this.mark.visible = true; this.render(); }
+  hideMarker() { if (this.mark.visible) { this.mark.visible = false; this.render(); } }
+  applyTheme(strainOn) {
+    this.scene.background = color('--surface');
+    paintColors(this.D, this.fill.geometry.attributes.color, strainOn);
+    this.fill.material.color = strainOn ? new THREE.Color(1, 1, 1) : color('--fill-neutral');
+    this.wire.material.color = color('--wire');
+    this.outlineMat.color = color('--outline');
+    for (const l of this.grid.children) l.material.color = color('--grid');
+    this.overlap.material.color = color('--critical');
+    this.mark.userData.ring.material.color = color('--surface');
+    this.mark.userData.dot.material.color = color('--select');
+    this.render();
+  }
+  setMap(tex) { this.fill.material.map = tex; this.wire.material.map = tex; this.render(); }
+  render() {
+    if (this._raf) return;
+    this._raf = requestAnimationFrame(() => { this._raf = 0; this.r.render(this.scene, this.cam); });
+  }
+}
+
+// ================================================================== 3D view: body + solid brace
+class View3D {
+  constructor(canvas, D, tex, thickness, onHover, onLeave) {
+    this.canvas = canvas; this.D = D; this.t = thickness;
+    this.r = new THREE.WebGLRenderer({ canvas, antialias: true });
+    this.r.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.scene = new THREE.Scene();
+    this.cam = new THREE.PerspectiveCamera(30, 1, 5, 20000);
+    this.cam.up.set(0, 0, 1);
+    this.controls = new OrbitControls(this.cam, canvas);
+    this.controls.addEventListener('change', () => this.render());
+    this.controls.addEventListener('start', () => { this.orbiting = true; onLeave(); });
+    this.controls.addEventListener('end', () => { this.orbiting = false; });
+
+    // brace: skin-side surface (offset 0) and outer surface (offset t), both cut by the mask
+    this.colors = new THREE.BufferAttribute(new Float32Array(D.nf * 9).fill(1), 3);
+    const mat = (side) => new THREE.MeshLambertMaterial({ vertexColors: true, map: tex, alphaTest: 0.5, side });
+    this.outer = new THREE.Mesh(sheetGeometry3D(D, thickness, this.colors), mat(THREE.FrontSide));
+    this.inner = new THREE.Mesh(sheetGeometry3D(D, 0, this.colors), mat(THREE.BackSide));
+    this.edgeMat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
+    this.walls = new THREE.Mesh(new THREE.BufferGeometry(), this.edgeMat);
+    this.rimWall = new THREE.Mesh(new THREE.BufferGeometry(), this.edgeMat);
+    this.lineMat = new LineMaterial({ linewidth: 1.3 });
+    this.edges = new LineSegments2(segmentsGeometry([]), this.lineMat);
+    this.rimEdges = new LineSegments2(segmentsGeometry([]), this.lineMat);
+    this.wire = new THREE.LineSegments(wireGeometry(D, 3, thickness), new THREE.LineBasicMaterial({ map: tex, alphaTest: 0.5, transparent: true, opacity: 0.18, depthWrite: false }));
+    this.wire.visible = false;
+    this.curveMat = new LineMaterial({ linewidth: 2.4 });
+    this.curve = new LineSegments2(segmentsGeometry([]), this.curveMat);
+    this.curve.visible = false;
+    this.overlap = new THREE.Mesh(subsetGeometry(D, D.overlap, 3, thickness), new THREE.MeshBasicMaterial({
+      transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+    }));
+    this.mark = new THREE.Mesh(new THREE.SphereGeometry(4, 20, 12), new THREE.MeshBasicMaterial());
+    this.mark.visible = false;
+
+    // body scan
+    this.body = null;
+    if (D.body) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(Float32Array.from(D.body.xyz), 3));
+      g.setIndex(new THREE.BufferAttribute(Uint32Array.from(D.body.faces), 1));
+      g.computeVertexNormals();
+      this.body = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }));
+    }
+
+    // three r160 physical light units: intensity pi ~ full albedo
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x8c8c8c, 0.62 * Math.PI);
+    hemi.position.set(0, 0, 1);
+    const key = new THREE.DirectionalLight(0xffffff, 0.42 * Math.PI);
+    key.position.set(0.4, 0.6, 1);
+    this.cam.add(key);
+    this.scene.add(this.outer, this.inner, this.walls, this.rimWall, this.edges, this.rimEdges, this.overlap, this.wire, this.curve, this.mark, hemi, this.cam);
+    if (this.body) this.scene.add(this.body);
+    this.buildRim();
+
+    this.ray = new THREE.Raycaster();
+    canvas.addEventListener('pointermove', (e) => { if (!this.orbiting && e.buttons === 0) onHover(e); });
+    canvas.addEventListener('pointerleave', onLeave);
+  }
+
+  // a ribbon wall between offset 0 and offset t along a closed loop; pts = [{p, n}]
+  ribbon(loops) {
+    const pos = [], idx = [], seg = [];
+    const t = this.t;
+    for (const L of loops) {
+      const base = pos.length / 3, n = L.length;
+      for (const q of L) pos.push(q.p[0], q.p[1], q.p[2], q.p[0] + t * q.n[0], q.p[1] + t * q.n[1], q.p[2] + t * q.n[2]);
+      for (let i = 0; i < n; i++) {
+        const a = base + 2 * i, b = base + 2 * ((i + 1) % n);
+        idx.push(a, b, a + 1, b, b + 1, a + 1);
+        seg.push(pos[3 * a], pos[3 * a + 1], pos[3 * a + 2], pos[3 * b], pos[3 * b + 1], pos[3 * b + 2],
+          pos[3 * a + 3], pos[3 * a + 4], pos[3 * a + 5], pos[3 * b + 3], pos[3 * b + 4], pos[3 * b + 5]);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return { g, seg };
+  }
+  buildRim() {
+    const D = this.D, loop = D.outlineIdx.map((i) => ({ p: [D.XYZ[3 * i], D.XYZ[3 * i + 1], D.XYZ[3 * i + 2]], n: [D.N[3 * i], D.N[3 * i + 1], D.N[3 * i + 2]] }));
+    const { g, seg } = this.ribbon([loop]);
+    this.rimWall.geometry.dispose(); this.rimWall.geometry = g;
+    this.rimEdges.geometry.dispose(); this.rimEdges.geometry = segmentsGeometry(seg);
+  }
+  setCutWalls(loops) {           // loops of {p, n} along every cutout edge
+    this.cutLoops = loops;
+    const { g, seg } = this.ribbon(loops);
+    this.walls.geometry.dispose(); this.walls.geometry = g;
+    this.edges.geometry.dispose(); this.edges.geometry = segmentsGeometry(seg);
+    this.render();
+  }
+  setThickness(t) {
+    this.t = t;
+    offsetSheet(this.D, this.outer.geometry, t);
+    this.wire.geometry.dispose(); this.wire.geometry = wireGeometry(this.D, 3, t);
+    this.overlap.geometry.dispose(); this.overlap.geometry = subsetGeometry(this.D, this.D.overlap, 3, t);
+    this.buildRim();
+    if (this.cutLoops) this.setCutWalls(this.cutLoops);
+    this.render();
+  }
+  pickAt(e) {
+    const r = this.canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    this.ray.setFromCamera(ndc, this.cam);
+    const hit = this.ray.intersectObject(this.outer, false)[0];
+    if (!hit) return null;
+    const f = hit.faceIndex, D = this.D, t = this.t;
+    const p = (i) => new THREE.Vector3(D.XYZ[3 * i] + t * D.N[3 * i], D.XYZ[3 * i + 1] + t * D.N[3 * i + 1], D.XYZ[3 * i + 2] + t * D.N[3 * i + 2]);
+    const bc = THREE.Triangle.getBarycoord(hit.point, p(D.F[3 * f]), p(D.F[3 * f + 1]), p(D.F[3 * f + 2]), new THREE.Vector3());
+    return { f, w: [bc.x, bc.y, bc.z] };
+  }
+  resize() {
+    const w = Math.max(1, this.canvas.clientWidth), h = Math.max(1, this.canvas.clientHeight);
+    this.r.setSize(w, h, false);
+    this.cam.aspect = w / h;
+    this.cam.updateProjectionMatrix();
+    for (const m of [this.lineMat, this.curveMat]) m.resolution.set(w, h);
+    this.render();
+  }
+  fit() {
+    const R = Math.max(this.D.radius3 * 1.1, this.body && this.body.visible ? this.D.radiusBody * 0.8 : 0);
+    const fov = THREE.MathUtils.degToRad(this.cam.fov / 2);
+    const d = R / Math.sin(Math.min(fov, Math.atan(Math.tan(fov) * this.cam.aspect))) * 1.02;
+    this.cam.position.copy(new THREE.Vector3(0.9, -1.6, 0.45).normalize().multiplyScalar(d));
+    this.controls.target.set(0, 0, 0);
+    this.controls.update();
+    this.render();
+  }
+  setCurve(list, closed) {
+    const seg = [], n = list.length;
+    for (let i = 0; i < (closed ? n : n - 1); i++) {
+      const a = list[i], b = list[(i + 1) % n];
+      if (a && b) seg.push(...a, ...b);
+    }
+    this.curve.geometry.dispose();
+    this.curve.geometry = segmentsGeometry(seg);
+    this.curve.visible = seg.length > 0;
+    this.render();
+  }
+  hideCurve() { if (this.curve.visible) { this.curve.visible = false; this.render(); } }
+  setMarker(x, y, z) { this.mark.position.set(x, y, z); this.mark.visible = true; this.render(); }
+  hideMarker() { if (this.mark.visible) { this.mark.visible = false; this.render(); } }
+  applyTheme(strainOn) {
+    this.scene.background = color('--surface');
+    paintColors(this.D, this.colors, strainOn);
+    const white = new THREE.Color(1, 1, 1);
+    this.outer.material.color = strainOn ? white : color('--mat-out');
+    this.inner.material.color = strainOn ? white : color('--mat-in');
+    this.edgeMat.color = color('--mat-edge');
+    if (this.body) this.body.material.color = color('--body');
+    this.wire.material.color = color('--wire');
+    this.lineMat.color = color('--outline');
+    this.curveMat.color = color('--select');
+    this.overlap.material.color = color('--critical');
+    this.mark.material.color = color('--select');
+    this.render();
+  }
+  setMap(tex) { this.inner.material.map = tex; this.outer.material.map = tex; this.wire.material.map = tex; this.render(); }
+  render() {
+    if (this._raf) return;
+    this._raf = requestAnimationFrame(() => { this._raf = 0; this.r.render(this.scene, this.cam); });
+  }
+}
+
+// ================================================================== editor
+const TOOL_HELP = {
+  select: 'Click a cutout to select it, drag it to move, drag the dots to reshape. Double-click its outline to add a point, right-click a dot to remove it, Del to delete the cutout. Drag empty space to pan.',
+  lasso: 'Hold the left button and draw a closed loop; release to create the cutout.',
+  poly: 'Click to place control points; double-click, press Enter, or click the first point to close. Esc cancels, Backspace removes the last point.',
+};
+const TOOL_HELP_TOUCH = {
+  select: 'Tap a cutout to select it, drag it to move, drag the dots to reshape. Double-tap its outline to add a point, long-press a dot to remove it. Two fingers: pan and zoom.',
+  lasso: 'Draw a closed loop with a finger or the Apple Pencil; lift to create the cutout. Two fingers: pan and zoom. Once the Pencil is used, one finger pans and the Pencil draws.',
+  poly: 'Tap to place control points; double-tap, tap the first point, or “Close shape” to finish. Two fingers: pan and zoom.',
+};
+
+const ed = {
+  D: null, v2: null, v3: null, masks: null, maskHi: true, pick: null,
+  cutouts: [], nextId: 1, rim: 8, thickness: 5, selId: null, hoverId: null,
+  tool: 'select', drawing: null, drag: null, space: false,
+  undoStack: [], redoStack: [], pendingSnap: null, idleTimer: 0,
+  basePx: 1, checks: { viol: [], clip: new Set(), inOverlap: new Set(), merged: 0 }, metrics: null,
+  scaleBase: null, storageKey: '',
+  // touch: active fingers, two-finger gesture, Apple Pencil seen, last tap (double-tap), long-press timer
+  touches: new Map(), gesture: null, penSeen: false, lastTap: null, pressTimer: 0, pointerType: 'mouse',
+};
+
+const polyOf = (c) => (c._poly ||= splineClosed(c.pts, 10));
+const touch = (c) => { c._poly = null; c._bb = null; };
+const bbOf = (c) => (c._bb ||= bboxOf(polyOf(c)));
+const selected = () => ed.cutouts.find((c) => c.id === ed.selId) || null;
+const snapshot = () => JSON.stringify({ rim: ed.rim, thickness: ed.thickness, cutouts: ed.cutouts.map((c) => ({ id: c.id, pts: c.pts })) });
+function newCutout(pts) { return { id: ed.nextId++, pts: pts.map((p) => [+p[0], +p[1]]) }; }
+
+function restore(s) {
+  const o = JSON.parse(s);
+  ed.rim = o.rim;
+  if (o.thickness) ed.thickness = o.thickness;
+  ed.cutouts = o.cutouts.map((c) => ({ id: c.id, pts: c.pts }));
+  ed.nextId = Math.max(ed.nextId, ...ed.cutouts.map((c) => c.id + 1), 1);
+  if (!selected()) ed.selId = null;
+  if (ed.v3 && ed.v3.t !== ed.thickness) ed.v3.setThickness(ed.thickness);
+  syncControls();
+}
+function begin() { ed.pendingSnap = snapshot(); }
+function end() {
+  const s = snapshot();
+  if (ed.pendingSnap !== null && s === ed.pendingSnap) {   // nothing changed (e.g. a tap): skip the full redraw
+    ed.pendingSnap = null;
+    syncControls();
+    drawOverlay();
+    return;
+  }
+  if (ed.pendingSnap !== null && s !== ed.pendingSnap) {
+    ed.undoStack.push(ed.pendingSnap);
+    if (ed.undoStack.length > 200) ed.undoStack.shift();
+    ed.redoStack.length = 0;
+    persist();
+  }
+  ed.pendingSnap = null;
+  refresh(false);
+}
+function change(fn) { begin(); fn(); end(); }
+function undo() { if (!ed.undoStack.length) return; ed.redoStack.push(snapshot()); restore(ed.undoStack.pop()); persist(); refresh(false); }
+function redo() { if (!ed.redoStack.length) return; ed.undoStack.push(snapshot()); restore(ed.redoStack.pop()); persist(); refresh(false); }
+function persist() { try { localStorage.setItem(ed.storageKey, snapshot()); } catch { /* storage unavailable: the design still works for this session */ } }
+function loadPersisted() {
+  try {
+    const s = localStorage.getItem(ed.storageKey);
+    if (s) { const o = JSON.parse(s); if (Array.isArray(o.cutouts)) restore(s); }
+  } catch { /* ignore a broken or unavailable store */ }
+}
+
+function setMaskTex(tex) { ed.v2.setMap(tex); ed.v3.setMap(tex); }
+
+function refresh(live) {
+  const polys = ed.cutouts.map(polyOf);
+  const m = live ? ed.masks.lo : ed.masks.hi;
+  m.draw(polys, ed.rim);
+  setMaskTex(m.tex);
+  ed.maskHi = !live;
+  updateWalls(m);
+  update3DCurve();
+  drawOverlay();
+  syncControls();
+  clearTimeout(ed.idleTimer);
+  ed.idleTimer = setTimeout(idle, live ? 220 : 30);
+}
+function idle() {
+  const polys = ed.cutouts.map(polyOf);
+  if (!ed.maskHi) { ed.masks.hi.draw(polys, ed.rim); setMaskTex(ed.masks.hi.tex); ed.maskHi = true; updateWalls(ed.masks.hi); }
+  const px = ed.masks.hi.materialPixels(), mm2 = 1 / (ed.masks.hi.k ** 2);
+  ed.metrics = { open: Math.max(0, 1 - px / ed.basePx), area: px * mm2 };
+  runChecks();
+  renderHeader();
+  renderChecks();
+  drawOverlay();
+}
+
+// walls along the actual cutout edges, traced from the mask (handles merged and rim-clipped cutouts)
+function updateWalls(mask) {
+  const loops = ed.cutouts.length ? mask.contours() : [];
+  let outlineIdx = -1, best = -1;
+  loops.forEach((L, i) => { const a = Math.abs(polyArea(L)); if (a > best) { best = a; outlineIdx = i; } });
+  const D = ed.D, out = [];
+  loops.forEach((L, i) => {
+    if (i === outlineIdx) return;                       // the trim line has its own exact wall
+    const pts = [];
+    for (const q of L) { const s = surfAt(q[0], q[1], true); if (s) pts.push(s); }
+    if (pts.length > 2) out.push(pts);
+  });
+  ed.v3.setCutWalls(out);
+}
+function surfAt(x, y, nearest = false) {
+  const hit = ed.pick(x, y, nearest);
+  if (!hit) return null;
+  const { F, XYZ, N } = ed.D, p = [0, 0, 0], n = [0, 0, 0];
+  for (let k = 0; k < 3; k++) { const i = F[3 * hit.f + k]; for (let d = 0; d < 3; d++) { p[d] += hit.w[k] * XYZ[3 * i + d]; n[d] += hit.w[k] * N[3 * i + d]; } }
+  const l = Math.hypot(...n) || 1;
+  return { p, n: n.map((v) => v / l), f: hit.f };
+}
+function outerAt(x, y) {
+  const s = surfAt(x, y);
+  if (!s) return null;
+  const t = ed.thickness + 0.3;
+  return [s.p[0] + t * s.n[0], s.p[1] + t * s.n[1], s.p[2] + t * s.n[2]];
+}
+
+// ---------------------------------------------------------- design-rule checks
+function runChecks() {
+  const rim = ed.rim, cs = ed.cutouts, viol = [], clip = new Set(), inOverlap = new Set();
+  let merged = 0;
+  for (let i = 0; i < cs.length; i++) {
+    const A = polyOf(cs[i]), a = bbOf(cs[i]);
+    for (let j = i + 1; j < cs.length; j++) {
+      const b = bbOf(cs[j]);
+      if (a.x0 - rim > b.x1 || b.x0 - rim > a.x1 || a.y0 - rim > b.y1 || b.y0 - rim > a.y1) continue;
+      const B = polyOf(cs[j]);
+      if (A.some((p) => pointInPoly(p[0], p[1], B)) || B.some((p) => pointInPoly(p[0], p[1], A))) { merged++; continue; }
+      const r = polyMinDist(A, B);
+      if (r.d < rim) viol.push({ a: cs[i].id, b: cs[j].id, ...r });
+    }
+    const O = ed.D.outline, near = [];
+    for (let k = 0; k < O.length; k++) {
+      const p = O[k];
+      if (p[0] >= a.x0 - rim - 10 && p[0] <= a.x1 + rim + 10 && p[1] >= a.y0 - rim - 10 && p[1] <= a.y1 + rim + 10) near.push(k);
+    }
+    let clipped = A.some((p) => !pointInPoly(p[0], p[1], O));
+    for (let t = 0; !clipped && t < near.length; t++) {
+      const k = near[t], p = O[k], q = O[(k + 1) % O.length];
+      for (const s of A) { if (segDist2(s[0], s[1], p[0], p[1], q[0], q[1])[0] < rim * rim) { clipped = true; break; } }
+    }
+    if (clipped) clip.add(cs[i].id);
+    for (const p of ed.D.overlapPts) {
+      if (p[0] >= a.x0 && p[0] <= a.x1 && p[1] >= a.y0 && p[1] <= a.y1 && pointInPoly(p[0], p[1], A)) { inOverlap.add(cs[i].id); break; }
+    }
+  }
+  ed.checks = { viol, clip, inOverlap, merged };
+}
+function renderChecks() {
+  const c = ed.checks, items = [];
+  const li = (cls, icon, text, note = '') => `<li><span class="ic ${cls}">${icon}</span><span>${text}${note ? `<br><span class="note">${note}</span>` : ''}</span></li>`;
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  if (!ed.cutouts.length) items.push(li('good', '○', 'No cutouts yet', 'Start with “Lasso cutout” or “Point-by-point cutout”.'));
+  else {
+    if (c.viol.length) {
+      const min = Math.min(...c.viol.map((v) => v.d));
+      items.push(li('critical', '⚠', `${plural(c.viol.length, 'web')} narrower than ${ed.rim} mm`, `Narrowest ${fmt(min)} mm, marked with red dashes.`));
+    } else items.push(li('good', '✓', `All webs between cutouts ≥ ${ed.rim} mm`));
+    if (c.clip.size) items.push(li('warning', '⚠', `${plural(c.clip.size, 'cutout')} clipped by the edge margin`, 'Dashed outline; the real opening is smaller than drawn.'));
+    else items.push(li('good', '✓', `All cutouts inside the ${ed.rim} mm edge margin`));
+    if (c.inOverlap.size) items.push(li('critical', '⚠', `${plural(c.inOverlap.size, 'cutout')} in the self-overlap zone`, 'That zone maps to two places on the 3D brace, so the cutout appears twice.'));
+    if (c.merged) items.push(li('good', 'ⓘ', `${plural(c.merged, 'pair')} of overlapping cutouts merged into one opening`));
+  }
+  const s = ed.D.meta.strain, f = ed.D.meta.fit;
+  items.push(li('good', 'ⓘ', `Base flattening: mean stretch ${pct(s.mean)}, 95th pct ${pct(s.p95)}`, 'Complete brace, no cutouts (geometry only).'));
+  if (f) items.push(li('good', 'ⓘ', `Fit to body: median gap ${fmt(f.median_mm, 2)} mm, 95th pct ${fmt(f.p95_mm, 2)} mm`, 'Skin-side surface vs. body scan; no penetration.'));
+  $('checks').innerHTML = items.join('');
+}
+function renderHeader() {
+  const m = ed.D.meta, x = ed.metrics, c = ed.checks;
+  const issues = c.viol.length + c.clip.size + c.inOverlap.size;
+  const vol = x ? x.area * ed.D.area3to2 * ed.thickness / 1000 : null;
+  const stats = [
+    ['Pattern', `${fmt(m.bbox2d_mm[0], 0)} × ${fmt(m.bbox2d_mm[1], 0)} mm`],
+    ['Thickness', `${fmt(ed.thickness, 1)} mm`],
+    ['Cutouts', `${ed.cutouts.length}`],
+    ['Open area', x ? pct(x.open) : '—'],
+    ['Material', x ? `${fmt(x.area / 100, 0)} cm²` : '—'],
+    ['Shell volume ≈', vol !== null ? `${fmt(vol, 0)} cm³` : '—'],
+    [issues ? '<span class="ic critical">⚠</span> Design check' : '<span class="ic good">✓</span> Design check', issues ? `${issues} to fix` : 'passed'],
+  ];
+  $('stats').innerHTML = stats.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
+}
+
+// ---------------------------------------------------------- overlay (SVG, screen coordinates)
+function drawOverlay() {
+  const v = ed.v2, out = [];
+  const pathOf = (P, close = true) => P.length ? 'M' + P.map((p) => { const s = v.toScreen(p[0], p[1]); return `${s[0].toFixed(1)},${s[1].toFixed(1)}`; }).join('L') + (close ? 'Z' : '') : '';
+  for (const c of ed.cutouts) {
+    const cls = ['cut'];
+    if (c.id === ed.selId) cls.push('sel');
+    else if (c.id === ed.hoverId) cls.push('hover');
+    if (ed.checks.clip.has(c.id)) cls.push('clip');
+    out.push(`<path class="${cls.join(' ')}" d="${pathOf(polyOf(c))}"/>`);
+  }
+  const s = selected(), hr = COARSE ? 8 : 5;
+  if (s && ed.tool === 'select') {
+    out.push(`<path class="ctrl" d="${pathOf(s.pts)}"/>`);
+    s.pts.forEach((p) => { const q = v.toScreen(p[0], p[1]); out.push(`<circle class="h" cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="${hr}"/>`); });
+  }
+  for (const vi of ed.checks.viol) {
+    const a = v.toScreen(...vi.pa), b = v.toScreen(...vi.pb);
+    out.push(`<line class="viol" x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}"/>`,
+      `<circle class="viol-dot" cx="${a[0]}" cy="${a[1]}" r="2.5"/><circle class="viol-dot" cx="${b[0]}" cy="${b[1]}" r="2.5"/>`,
+      `<text class="viol-tag" x="${(a[0] + b[0]) / 2 + 6}" y="${(a[1] + b[1]) / 2 - 6}">${fmt(vi.d)} mm</text>`);
+  }
+  const dr = ed.drawing;
+  if (dr && dr.type === 'lasso' && dr.pts.length > 1) out.push(`<path class="draw" d="${pathOf(dr.pts)}"/>`);
+  if (dr && dr.type === 'poly' && dr.pts.length) {
+    const pts = dr.hover ? [...dr.pts, dr.hover] : dr.pts;
+    if (pts.length >= 3) out.push(`<path class="draw ghost" d="${pathOf(splineClosed(pts, 8))}"/>`);
+    out.push(`<path class="draw open" d="${pathOf(pts, false)}"/>`);
+    dr.pts.forEach((p, i) => { const q = v.toScreen(p[0], p[1]); out.push(`<circle class="h" cx="${q[0]}" cy="${q[1]}" r="${(i === 0 ? 6 : 4) + (COARSE ? 3 : 0)}"/>`); });
+  }
+  $('ov').innerHTML = out.join('');
+  $('poly-actions').hidden = !(dr && dr.type === 'poly');
+  if (dr && dr.type === 'poly') $('poly-close').disabled = dr.pts.length < 3;
+}
+function update3DCurve() {
+  const dr = ed.drawing;
+  let P = null, closed = true;
+  if (dr && dr.type === 'lasso' && dr.pts.length > 1) P = dr.pts;
+  else if (dr && dr.type === 'poly' && dr.pts.length) { P = dr.hover ? [...dr.pts, dr.hover] : dr.pts; closed = P.length >= 3; if (closed) P = splineClosed(P, 8); }
+  else if (selected()) P = polyOf(selected());
+  if (!P) { ed.v3.hideCurve(); return; }
+  ed.v3.setCurve(P.map((p) => outerAt(p[0], p[1])), closed);
+}
+
+// ---------------------------------------------------------- pointer interaction
+function local(e) { const r = $('ov').getBoundingClientRect(); return { px: e.clientX - r.left, py: e.clientY - r.top }; }
+function handleAt(px, py) {
+  const s = selected();
+  if (!s || ed.tool !== 'select') return null;
+  for (let i = s.pts.length - 1; i >= 0; i--) {
+    const q = ed.v2.toScreen(s.pts[i][0], s.pts[i][1]);
+    if (Math.hypot(q[0] - px, q[1] - py) <= (ed.pointerType === 'mouse' ? 8 : 18)) return { c: s, i };
+  }
+  return null;
+}
+function cutoutAt(x, y) {
+  for (let i = ed.cutouts.length - 1; i >= 0; i--) {
+    const c = ed.cutouts[i], b = bbOf(c);
+    if (x < b.x0 || x > b.x1 || y < b.y0 || y > b.y1) continue;
+    if (pointInPoly(x, y, polyOf(c))) return c;
+  }
+  return null;
+}
+function select(id) {
+  if (ed.selId !== id) { ed.selId = id; ed.scaleBase = null; $('sel-scale').value = 100; $('sel-scale-out').textContent = '100%'; }
+  syncControls(); update3DCurve(); drawOverlay();
+}
+function setTool(t) {
+  ed.drawing = null;
+  ed.tool = t;
+  for (const b of document.querySelectorAll('.tool')) b.setAttribute('aria-pressed', String(b.dataset.tool === t));
+  $('tool-help').textContent = (COARSE ? TOOL_HELP_TOUCH : TOOL_HELP)[t];
+  $('ov').style.cursor = t === 'select' ? 'default' : 'crosshair';
+  update3DCurve();
+  drawOverlay();
+}
+// two fingers: pan + zoom the 2D view; a second finger cancels what the first one started
+function startGesture() {
+  const d = ed.drag;
+  clearTimeout(ed.pressTimer);
+  if (d && (d.type === 'point' || d.type === 'move')) end();                  // keep the edit made so far
+  if (d && d.type === 'lasso') ed.drawing = null;
+  if (d && d.type === 'polytap' && ed.drawing) { ed.drawing.pts.pop(); if (!ed.drawing.pts.length) ed.drawing = null; }
+  ed.drag = null;
+  update3DCurve();
+  drawOverlay();
+  const [a, b] = [...ed.touches.values()], r = $('ov').getBoundingClientRect();
+  ed.gesture = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2 - r.left, my: (a.y + b.y) / 2 - r.top, s0: ed.v2.scale };
+}
+function moveGesture() {
+  const [a, b] = [...ed.touches.values()], r = $('ov').getBoundingClientRect(), g = ed.gesture;
+  const mx = (a.x + b.x) / 2 - r.left, my = (a.y + b.y) / 2 - r.top, dd = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+  ed.v2.panBy(mx - g.mx, my - g.my);
+  ed.v2.zoomAt(mx, my, (g.s0 * dd / g.d0) / ed.v2.scale);
+  g.mx = mx; g.my = my;
+}
+function nearOutline(c, w, tol) {
+  const P = polyOf(c);
+  for (let i = 0; i < P.length; i++) {
+    const a = P[i], b = P[(i + 1) % P.length];
+    if (segDist2(w.x, w.y, a[0], a[1], b[0], b[1])[0] < tol * tol) return true;
+  }
+  return false;
+}
+function onDown(e) {
+  const ov = $('ov');
+  const { px, py } = local(e), w = ed.v2.toWorld(px, py);
+  ed.pointerType = e.pointerType;
+  if (e.pointerType === 'pen') ed.penSeen = true;
+  ov.setPointerCapture(e.pointerId);
+  if (e.pointerType === 'touch') {
+    ed.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ed.touches.size === 2) { startGesture(); return; }
+    if (ed.touches.size > 2 || ed.gesture) return;
+    // once the Apple Pencil has been used, one finger navigates and only the Pencil draws (palm rejection)
+    if (ed.penSeen && ed.tool !== 'select') { ed.drag = { type: 'pan', x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY }; return; }
+  }
+  const start = { sx: e.clientX, sy: e.clientY, moved: false };
+  const h = handleAt(px, py);
+  if (e.button === 2 && h) { if (h.c.pts.length > 3) change(() => { h.c.pts.splice(h.i, 1); touch(h.c); }); return; }
+  if (e.button === 1 || e.button === 2 || (e.button === 0 && ed.space)) { ed.drag = { type: 'pan', x: e.clientX, y: e.clientY, ...start }; ov.style.cursor = 'grabbing'; return; }
+  if (e.button !== 0) return;
+  if (ed.tool === 'select') {
+    if (h) {
+      begin();
+      ed.drag = { type: 'point', c: h.c, i: h.i, ...start };
+      if (e.pointerType !== 'mouse') {                      // long-press a dot: remove that point
+        ed.pressTimer = setTimeout(() => {
+          const d = ed.drag;
+          if (d && d.type === 'point' && !d.moved && d.c.pts.length > 3) { d.c.pts.splice(d.i, 1); touch(d.c); ed.drag = null; end(); }
+        }, 550);
+      }
+      return;
+    }
+    const c = cutoutAt(w.x, w.y);
+    if (c) { select(c.id); begin(); ed.drag = { type: 'move', c, last: w, ...start }; return; }
+    const s = selected();
+    if (!(s && nearOutline(s, w, 30 / ed.v2.scale))) select(null);   // keep the selection when tapping right next to it
+    ed.drag = { type: 'pan', x: e.clientX, y: e.clientY, ...start };
+    ov.style.cursor = 'grabbing';
+    return;
+  }
+  if (ed.tool === 'lasso') { ed.drawing = { type: 'lasso', pts: [[w.x, w.y]] }; ed.drag = { type: 'lasso', ...start }; return; }
+  if (ed.tool === 'poly') {
+    if (!ed.drawing) ed.drawing = { type: 'poly', pts: [] };
+    const P = ed.drawing.pts;
+    if (P.length >= 3) {
+      const q = ed.v2.toScreen(P[0][0], P[0][1]);
+      if (Math.hypot(q[0] - px, q[1] - py) < (e.pointerType === 'mouse' ? 10 : 20)) { finishPoly(); return; }
+    }
+    P.push([w.x, w.y]);
+    ed.drag = { type: 'polytap', ...start };
+    update3DCurve();
+    drawOverlay();
+  }
+}
+function onMove(e) {
+  if (e.pointerType === 'touch' && ed.touches.has(e.pointerId)) {
+    ed.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ed.gesture) { if (ed.touches.size >= 2) moveGesture(); return; }
+  }
+  const { px, py } = local(e), w = ed.v2.toWorld(px, py), d = ed.drag;
+  if (d && !d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) > 6) { d.moved = true; clearTimeout(ed.pressTimer); }
+  if (d && d.type === 'pan') { ed.v2.panBy(e.clientX - d.x, e.clientY - d.y); d.x = e.clientX; d.y = e.clientY; return; }
+  if (d && d.type === 'point') { if (d.moved) { d.c.pts[d.i] = [w.x, w.y]; touch(d.c); refresh(true); } }
+  else if (d && d.type === 'move') {
+    if (d.moved) {
+      const dx = w.x - d.last.x, dy = w.y - d.last.y;
+      d.c.pts = d.c.pts.map((p) => [p[0] + dx, p[1] + dy]);
+      d.last = w; touch(d.c); refresh(true);
+    }
+  } else if (d && d.type === 'lasso') {
+    const P = ed.drawing.pts, last = P[P.length - 1];
+    if (Math.hypot(w.x - last[0], w.y - last[1]) * ed.v2.scale > 3) { P.push([w.x, w.y]); update3DCurve(); drawOverlay(); }
+  } else if (ed.drawing && ed.drawing.type === 'poly') { ed.drawing.hover = [w.x, w.y]; update3DCurve(); drawOverlay(); }
+  else if (ed.tool === 'select' && e.pointerType === 'mouse') {
+    const h = handleAt(px, py), c = h ? null : cutoutAt(w.x, w.y), id = c ? c.id : null;
+    $('ov').style.cursor = h ? 'pointer' : c ? 'move' : 'default';
+    if (id !== ed.hoverId) { ed.hoverId = id; drawOverlay(); }
+  }
+  linkCursor(w);
+}
+function onUp(e) {
+  if (e.pointerType === 'touch') {
+    ed.touches.delete(e.pointerId);
+    if (ed.gesture) { if (!ed.touches.size) ed.gesture = null; return; }
+  }
+  clearTimeout(ed.pressTimer);
+  const d = ed.drag;
+  ed.drag = null;
+  let dbl = false;
+  if (e.pointerType !== 'mouse' && e.type === 'pointerup' && (!d || !d.moved)) {   // double tap = double-click
+    const now = e.timeStamp, t = ed.lastTap;                 // event time, not handler time (handlers can lag)
+    dbl = !!t && now - t.t < 380 && Math.hypot(e.clientX - t.x, e.clientY - t.y) < 30;
+    ed.lastTap = dbl ? null : { t: now, x: e.clientX, y: e.clientY };
+  }
+  if (d) {
+    if (d.type === 'pan') $('ov').style.cursor = ed.tool === 'select' ? 'default' : 'crosshair';
+    else if (d.type === 'lasso') finishLasso();
+    else if (d.type === 'point' || d.type === 'move') end();
+  }
+  if (dbl) onDbl(e, true);
+}
+function onDbl(e, fromTap = false) {
+  if (!fromTap && ed.pointerType !== 'mouse') return;      // touch double taps are handled in onUp
+  const { px, py } = local(e), w = ed.v2.toWorld(px, py);
+  if (ed.tool === 'poly' && ed.drawing) {
+    const P = ed.drawing.pts;
+    if (fromTap && P.length > 1) P.pop();                    // the second tap closes; it is not a new point
+    while (P.length > 1 && dist(P[P.length - 1], P[P.length - 2]) * ed.v2.scale < 4) P.pop();
+    finishPoly();
+    return;
+  }
+  const s = selected();
+  if (ed.tool === 'select' && s) {
+    let best = -1, bd = Infinity;
+    for (let i = 0; i < s.pts.length; i++) {
+      const a = s.pts[i], b = s.pts[(i + 1) % s.pts.length];
+      const [d2] = segDist2(w.x, w.y, a[0], a[1], b[0], b[1]);
+      if (d2 < bd) { bd = d2; best = i; }
+    }
+    if (Math.sqrt(bd) * ed.v2.scale < 30) change(() => { s.pts.splice(best + 1, 0, [w.x, w.y]); touch(s); });
+  }
+}
+function finishLasso() {
+  const P = ed.drawing ? ed.drawing.pts : [];
+  ed.drawing = null;
+  if (P.length >= 6 && Math.abs(polyArea(P)) > 30) {
+    const n = clamp(Math.round(perimeter(P) / 20), 6, 32);
+    const c = newCutout(smoothClosed(resampleClosed(P, n), 1));
+    change(() => ed.cutouts.push(c));
+    ed.selId = c.id;
+  }
+  update3DCurve();
+  refresh(false);
+}
+function finishPoly() {
+  const P = ed.drawing ? ed.drawing.pts : [];
+  ed.drawing = null;
+  if (P.length >= 3 && Math.abs(polyArea(P)) > 10) {
+    const c = newCutout(P);
+    change(() => ed.cutouts.push(c));
+    ed.selId = c.id;
+  }
+  update3DCurve();
+  refresh(false);
+}
+function linkCursor(w) {
+  const hit = ed.pick(w.x, w.y);
+  if (!hit) { ed.v3.hideMarker(); $('readout').textContent = `x ${fmt(w.x)} · y ${fmt(w.y)} mm`; return; }
+  const p = outerAt(w.x, w.y);
+  ed.v3.setMarker(p[0], p[1], p[2]);
+  $('readout').textContent = `x ${fmt(w.x)} · y ${fmt(w.y)} mm · base stretch ${pct(ed.D.strain[hit.f], 2)}`;
+}
+function hover3D(e) {
+  const hit = ed.v3.pickAt(e);
+  if (!hit) { ed.v2.hideMarker(); return; }
+  const { F, UV } = ed.D;
+  let u = 0, v = 0;
+  for (let k = 0; k < 3; k++) { const i = F[3 * hit.f + k]; u += hit.w[k] * UV[2 * i]; v += hit.w[k] * UV[2 * i + 1]; }
+  ed.v2.setMarker(u, v);
+}
+
+// ---------------------------------------------------------- side panel, export
+function syncControls() {
+  $('btn-undo').disabled = !ed.undoStack.length;
+  $('btn-redo').disabled = !ed.redoStack.length;
+  $('btn-clear').disabled = !ed.cutouts.length;
+  $('btn-original').disabled = !ed.D.originalCutouts.length;
+  $('btn-original').textContent = `Load original openings (${ed.D.originalCutouts.length})`;
+  $('rim').value = ed.rim;
+  $('rim-out').textContent = `${ed.rim} mm`;
+  $('thick').value = ed.thickness;
+  $('thick-out').textContent = `${fmt(ed.thickness, 1)} mm`;
+  const s = selected();
+  $('sel-panel').hidden = !s;
+  if (s) {
+    const P = polyOf(s), b = bbOf(s);
+    $('sel-info').textContent = `· ${s.pts.length} points · ${fmt(Math.abs(polyArea(P)) / 100, 1)} cm² · ${fmt(b.x1 - b.x0, 0)} × ${fmt(b.y1 - b.y0, 0)} mm`;
+  }
+}
+function exportSVG() {
+  const f = ed.D.frame, m = ed.D.meta;
+  const P = (pts) => 'M' + pts.map((p) => `${(p[0] - f.x0).toFixed(3)},${(f.y0 + f.H - p[1]).toFixed(3)}`).join('L') + 'Z';
+  const cuts = ed.cutouts.map((c) => `    <path d="${P(splineClosed(c.pts, 16))}"/>`).join('\n');
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${f.W.toFixed(2)}mm" height="${f.H.toFixed(2)}mm" viewBox="0 0 ${f.W.toFixed(3)} ${f.H.toFixed(3)}">
+  <!-- Brace flat pattern, 1 unit = 1 mm. Source ${m.source}, base ${m.created}. Shell thickness ${ed.thickness} mm, min web / edge margin ${ed.rim} mm.
+       Geometry of the base flattening (complete brace, skin-side surface). ${ed.checks.clip.size} cutout(s) violate the edge margin. -->
+  <g id="outline" fill="none" stroke="#000000" stroke-width="0.25">
+    <path d="${P(ed.D.outline)}"/>
+  </g>
+  <g id="cutouts" fill="none" stroke="#d03b3b" stroke-width="0.25">
+${cuts}
+  </g>
+</svg>
+`;
+  download(svg, `brace-pattern-${stamp()}.svg`, 'image/svg+xml');
+}
+function saveDesign() {
+  const m = ed.D.meta;
+  const o = { format: 'brace-cutout-design', version: 2, base: { source: m.source, created: m.created, faces: m.faces, bbox2d_mm: m.bbox2d_mm },
+    thickness: ed.thickness, rim: ed.rim, cutouts: ed.cutouts.map((c) => ({ pts: c.pts.map((p) => [+p[0].toFixed(3), +p[1].toFixed(3)]) })) };
+  download(JSON.stringify(o, null, 1), `brace-design-${stamp()}.json`, 'application/json');
+}
+function openDesign(file) {
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const o = JSON.parse(rd.result);
+      if (o.format !== 'brace-cutout-design' || !Array.isArray(o.cutouts)) throw new Error('not a brace cutout design file');
+      if (o.base && o.base.faces !== ed.D.meta.faces) alert('Note: this design was drawn on a different flattening; cutout positions may be off.');
+      change(() => {
+        ed.rim = clamp(+o.rim || 8, 2, 30);
+        ed.thickness = clamp(+o.thickness || ed.thickness, 1, 10);
+        ed.cutouts = o.cutouts.filter((c) => Array.isArray(c.pts) && c.pts.length >= 3).map((c) => newCutout(c.pts));
+        ed.selId = null;
+        ed.v3.setThickness(ed.thickness);
+      });
+    } catch (err) { alert(`Cannot open: ${err.message}`); }
+  };
+  rd.readAsText(file);
+}
+async function download(text, name, type) {
+  if (COARSE && navigator.canShare) {               // iPad: the share sheet (Save to Files, AirDrop, ...)
+    const file = new File([text], name, { type });
+    if (navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: name }); return; } catch (err) { if (err.name === 'AbortError') return; }
+    }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function stamp() { const d = new Date(), p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`; }
+function renderLegend() {
+  const D = ed.D, share = new Float64Array(6);
+  let total = 0;
+  for (let f = 0; f < D.nf; f++) { share[D.cls[f]] += D.area2[f]; total += D.area2[f]; }
+  $('legend').innerHTML = `<div class="title">Base flattening |stretch| · share of area</div><div class="rows">` +
+    BIN_LABELS.map((l, i) => `<span class="sw" style="background:var(${RAMP_VARS[i]})"></span><span>${l}</span><span class="share">${(share[i] / total * 100).toFixed(1)}%</span>`).join('') + `</div>`;
+}
+// iPad Safari: hide the address / tab bars. Not shown in the home-screen app (already borderless) or on desktop.
+function setupFullscreen() {
+  const d = document, el = d.documentElement;
+  const supported = d.fullscreenEnabled || d.webkitFullscreenEnabled;
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if (!supported || !COARSE || standalone) return;
+  const btn = $('btn-fs');
+  const isFs = () => !!(d.fullscreenElement || d.webkitFullscreenElement);
+  const label = () => { btn.textContent = isFs() ? '✕ Exit full screen' : '⛶ Full screen'; };
+  btn.hidden = false;
+  label();
+  btn.addEventListener('click', () => {
+    try {
+      const r = isFs() ? (d.exitFullscreen || d.webkitExitFullscreen).call(d) : (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+      if (r && r.catch) r.catch(() => {});
+    } catch { /* not allowed here; the home-screen app is borderless anyway */ }
+  });
+  d.addEventListener('fullscreenchange', label);
+  d.addEventListener('webkitfullscreenchange', label);
+}
+
+function applyTheme() {
+  const on = $('lyr-strain').checked;
+  ed.v2.applyTheme(on);
+  ed.v3.applyTheme(on);
+  $('legend').hidden = !on;
+}
+
+function bindUI() {
+  const ov = $('ov');
+  ov.addEventListener('contextmenu', (e) => e.preventDefault());
+  ov.addEventListener('wheel', (e) => { e.preventDefault(); const { px, py } = local(e); ed.v2.zoomAt(px, py, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+  ov.addEventListener('pointerdown', onDown);
+  ov.addEventListener('pointermove', onMove);
+  ov.addEventListener('pointerup', onUp);
+  ov.addEventListener('pointercancel', onUp);
+  ov.addEventListener('dblclick', onDbl);
+  ov.addEventListener('pointerleave', () => { if (!ed.drag) { ed.v3.hideMarker(); $('readout').textContent = ''; } });
+
+  for (const b of document.querySelectorAll('.tool')) b.addEventListener('click', () => setTool(b.dataset.tool));
+  $('btn-undo').addEventListener('click', undo);
+  $('btn-redo').addEventListener('click', redo);
+  $('btn-clear').addEventListener('click', () => change(() => { ed.cutouts = []; ed.selId = null; }));
+  $('btn-original').addEventListener('click', () => {
+    const n = ed.cutouts.length;
+    if (n && !confirm(`Replace the current ${n} cutout(s) with the ${ed.D.originalCutouts.length} original openings? (You can undo this.)`)) return;
+    change(() => { ed.cutouts = ed.D.originalCutouts.map((p) => newCutout(p)); ed.selId = null; });
+  });
+  $('btn-del').addEventListener('click', () => { const s = selected(); if (s) change(() => { ed.cutouts = ed.cutouts.filter((c) => c !== s); ed.selId = null; }); });
+  $('sel-scale').addEventListener('input', (e) => {
+    const s = selected();
+    if (!s) return;
+    if (!ed.scaleBase) { begin(); ed.scaleBase = { pts: s.pts.map((p) => p.slice()), c: centroid(s.pts) }; }
+    const k = e.target.value / 100, { pts, c } = ed.scaleBase;
+    s.pts = pts.map((p) => [c[0] + (p[0] - c[0]) * k, c[1] + (p[1] - c[1]) * k]);
+    touch(s);
+    $('sel-scale-out').textContent = `${e.target.value}%`;
+    refresh(true);
+  });
+  $('sel-scale').addEventListener('change', (e) => { ed.scaleBase = null; end(); e.target.value = 100; $('sel-scale-out').textContent = '100%'; });
+  $('rim').addEventListener('input', (e) => { if (ed.pendingSnap === null) begin(); ed.rim = +e.target.value; $('rim-out').textContent = `${ed.rim} mm`; refresh(true); });
+  $('rim').addEventListener('change', () => end());
+  $('thick').addEventListener('input', (e) => {
+    if (ed.pendingSnap === null) begin();
+    ed.thickness = +e.target.value;
+    $('thick-out').textContent = `${fmt(ed.thickness, 1)} mm`;
+    ed.v3.setThickness(ed.thickness);
+    update3DCurve();
+    renderHeader();
+  });
+  $('thick').addEventListener('change', () => end());
+  $('lyr-body').addEventListener('change', (e) => { if (ed.v3.body) { ed.v3.body.visible = e.target.checked; ed.v3.render(); } });
+  $('lyr-strain').addEventListener('change', applyTheme);
+  $('lyr-wire').addEventListener('change', (e) => { ed.v2.wire.visible = ed.v3.wire.visible = e.target.checked; ed.v2.render(); ed.v3.render(); });
+  $('lyr-grid').addEventListener('change', (e) => { ed.v2.grid.visible = e.target.checked; ed.v2.render(); });
+  $('lyr-overlap').addEventListener('change', (e) => { ed.v2.overlap.visible = ed.v3.overlap.visible = e.target.checked; ed.v2.render(); ed.v3.render(); });
+  $('poly-close').addEventListener('click', () => finishPoly());
+  $('poly-back').addEventListener('click', () => { if (!ed.drawing) return; ed.drawing.pts.pop(); if (!ed.drawing.pts.length) ed.drawing = null; update3DCurve(); drawOverlay(); });
+  $('poly-cancel').addEventListener('click', () => { ed.drawing = null; update3DCurve(); drawOverlay(); });
+  $('btn-svg').addEventListener('click', exportSVG);
+  $('btn-save').addEventListener('click', saveDesign);
+  $('btn-open').addEventListener('click', () => $('file-open').click());
+  $('file-open').addEventListener('change', (e) => { if (e.target.files[0]) openDesign(e.target.files[0]); e.target.value = ''; });
+
+  addEventListener('keydown', (e) => {
+    if (e.target.matches('input[type="text"], input[type="number"], textarea')) return;
+    const k = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+    if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); return; }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === ' ') { ed.space = true; if (e.target === document.body) e.preventDefault(); return; }
+    if (k === 'v') setTool('select');
+    else if (k === 'l') setTool('lasso');
+    else if (k === 'p') setTool('poly');
+    else if (k === 'f') { ed.v2.fit(); ed.v3.fit(); }
+    else if (e.key === 'Escape') { if (ed.drawing) { ed.drawing = null; update3DCurve(); drawOverlay(); } else select(null); }
+    else if (e.key === 'Enter' && ed.drawing && ed.drawing.type === 'poly') finishPoly();
+    else if (e.key === 'Backspace' && ed.drawing && ed.drawing.type === 'poly') { e.preventDefault(); ed.drawing.pts.pop(); if (!ed.drawing.pts.length) ed.drawing = null; update3DCurve(); drawOverlay(); }
+    else if ((e.key === 'Delete' || e.key === 'Backspace') && selected() && !e.target.matches('input')) { e.preventDefault(); $('btn-del').click(); }
+  });
+  addEventListener('keyup', (e) => { if (e.key === ' ') ed.space = false; });
+  // a mouse-clicked button must not keep focus: Space (pan) would press it again (e.g. "Clear all")
+  document.addEventListener('click', (e) => { const b = e.target.closest('button'); if (b && e.detail > 0) b.blur(); });
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { applyTheme(); drawOverlay(); });
+}
+
+// ================================================================== main
+async function main() {
+  if (location.protocol === 'file:') {
+    showMessage('Do not open this file directly.<br>Run <code>py serve.py</code> in the VS Code terminal; the browser opens the right address.');
+    return;
+  }
+  let raw, body = null;
+  try {
+    const [r1, r2] = await Promise.all([fetch('data/pattern.json', { cache: 'no-store' }), fetch('data/body.json', { cache: 'no-store' })]);
+    if (!r1.ok) throw new Error(`HTTP ${r1.status}`);
+    raw = await r1.json();
+    if (r2.ok) body = await r2.json();
+  } catch (err) {
+    showMessage(`No flattening data found at <code>app/data/pattern.json</code> (${err.message}).<br><br>Run first:<br><code>.venv\\Scripts\\python flatten\\flatten_brace.py brace.stl</code>`);
+    return;
+  }
+  if (!raw.normals) {
+    showMessage('This <code>pattern.json</code> was made by an older version of the flattening script.<br>Run it again: <code>.venv\\Scripts\\python flatten\\flatten_brace.py brace.stl</code>');
+    return;
+  }
+  const D = prepare(raw, body);
+  ed.D = D;
+  ed.pick = buildPicker(D);
+  ed.thickness = D.meta.thickness_default_mm || 5;
+  ed.masks = { hi: new Mask(D, MASK_HI), lo: new Mask(D, MASK_LO) };
+  ed.masks.hi.draw([], 0);
+  ed.basePx = ed.masks.hi.materialPixels();
+  const m = D.meta;
+  ed.storageKey = `brace-design-v2:${m.source}:${m.faces}:${m.bbox2d_mm.join('x')}`;
+  loadPersisted();
+  try {
+    ed.v2 = new View2D($('c2d'), D, ed.masks.hi.tex, () => drawOverlay());
+    ed.v3 = new View3D($('c3d'), D, ed.masks.hi.tex, ed.thickness, hover3D, () => ed.v2.hideMarker());
+  } catch (err) {
+    showMessage(`The browser could not start WebGL: ${err.message}`);
+    return;
+  }
+  $('src').textContent = `${m.source} on ${m.body_source || 'body'} · flattened ${m.created.replace('T', ' ')}`;
+  $('lyr-overlap-wrap').hidden = !(m.overlap && m.overlap.faces);
+  $('lyr-body').disabled = !D.body;
+  if (COARSE) {
+    $('keys').innerHTML = '<p>2D: two fingers pan and zoom</p><p>3D: one finger rotates, two fingers zoom and pan</p><p>Undo / redo: the buttons above</p>';
+    $('label3d').textContent = '3D preview on body · one finger: rotate · two fingers: zoom and pan';
+  }
+
+  renderLegend();
+  applyTheme();
+  bindUI();
+  setupFullscreen();
+  setTool('select');
+  if (new URLSearchParams(location.search).has('original') && !ed.cutouts.length) ed.cutouts = D.originalCutouts.map((p) => newCutout(p));
+
+  const ro = new ResizeObserver(() => { ed.v2.resize(); ed.v3.resize(); drawOverlay(); });
+  ro.observe($('pane2d'));
+  ro.observe($('pane3d'));
+  ed.v2.resize(); ed.v3.resize();
+  ed.v2.fit(); ed.v3.fit();
+  refresh(false);
+}
+
+// heartbeat: keeps the app-mode server running while a window is open
+let pingFails = 0;
+function heartbeat() {
+  fetch('/__ping', { method: 'POST', cache: 'no-store' })
+    .then(() => { pingFails = 0; $('offline').hidden = true; })
+    .catch(() => { if (++pingFails >= 2) $('offline').hidden = false; });
+}
+const LOCAL = ['127.0.0.1', 'localhost'].includes(location.hostname);
+if (LOCAL && location.protocol.startsWith('http')) { heartbeat(); setInterval(heartbeat, 5000); }   // desktop app mode only
+
+// offline home-screen app (iPad over Tailscale https). Not on the desktop, where caching would hide edits;
+// ?sw=1 forces it on localhost for testing.
+function setupServiceWorker() {
+  const force = new URLSearchParams(location.search).has('sw');
+  if (!('serviceWorker' in navigator) || !window.isSecureContext || (LOCAL && !force)) return;
+  const hadController = !!navigator.serviceWorker.controller;
+  const offer = (worker) => {
+    $('update').hidden = false;
+    $('update-btn').onclick = () => worker.postMessage('skipWaiting');
+  };
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const w = reg.installing;
+      w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) offer(w); });
+    });
+  }).catch(() => { /* no offline copy; the app still works online */ });
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (hadController && !reloading) { reloading = true; location.reload(); }
+  });
+}
+setupServiceWorker();
+
+main();
+</script>
+</body>
+</html>
