@@ -1,7 +1,7 @@
 // Service worker: once the app has been opened over https (e.g. on the iPad via Tailscale), it keeps
 // a copy of every file so the home-screen app also works offline.
 // tools/publish.py replaces VERSION, so every published version installs fresh and the page offers "Reload".
-const VERSION = 'web-0.8-20261125104535';
+const VERSION = 'web-0.9-20261125110001';
 const CACHE = `brace-${VERSION}`;
 const FILES = [
   './', 'index.html', 'manifest.webmanifest',

@@ -17,4 +17,4 @@ Works in any modern browser on a computer or tablet. On an iPad, open the link i
 Built with Visual Studio Code and Claude Code as part of a design research project.
 3D rendering: [three.js](https://threejs.org) r160 (MIT licence, see `vendor/three/LICENSE`).
 
-_Version 0.8, published 2026-11-25._
+_Version 0.9, published 2026-11-25._

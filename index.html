@@ -150,6 +150,13 @@
   }
   .update { border-color: var(--select); display: flex; gap: 10px; align-items: center; }
   .fs { margin-left: auto; align-self: center; }
+  dialog.dlg { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--ink); padding: 18px; width: min(440px, 92vw); box-shadow: 0 8px 30px rgba(0,0,0,.25); }
+  dialog.dlg::backdrop { background: rgba(0,0,0,.35); }
+  dialog.dlg h3 { margin: 0 0 12px; font-size: 16px; }
+  dialog.dlg .opt { display: grid; gap: 2px; width: 100%; margin-bottom: 8px; padding: 10px 12px; }
+  dialog.dlg .opt span { color: var(--ink-2); font-size: 12px; }
+  dialog.dlg .status { min-height: 1.4em; color: var(--ink-2); margin: 6px 0 10px; font-size: 12px; }
+  dialog.dlg .row { display: flex; gap: 8px; justify-content: flex-end; }
 
   /* touch / Apple Pencil */
   body { touch-action: manipulation; }
@@ -283,6 +290,15 @@
   <span class="tier">COMPUTED · geometry</span>
   <span><b>Research prototype, not a medical device.</b> Simulated body model. The 2D canvas is the flattened skin-side surface of the complete brace (original openings closed, conformed to the body scan). Cutout positions on the 3D brace are exact; the final cut pattern of a design still has to be re-flattened.</span>
 </footer>
+
+<dialog class="dlg" id="dlg-save">
+  <h3>Save design</h3>
+  <button class="opt" data-kind="full"><b>Full-size STL (1:1, mm)</b><span id="info-full">Solid brace with cutouts, same coordinates as body.stl</span></button>
+  <button class="opt" data-kind="mini"><b>Mini model STL (about 60 mm tall)</b><span id="info-mini">For quick 3D printing</span></button>
+  <button class="opt" data-kind="json"><b>Design file (.json)</b><span>Reopen it later with “Open design”</span></button>
+  <div class="status" id="save-status"></div>
+  <div class="row"><button class="primary" id="save-file" hidden>Save file</button><button id="save-close">Close</button></div>
+</dialog>
 
 <script type="module">
 import * as THREE from 'three';
@@ -1473,11 +1489,211 @@ ${cuts}
 `;
   download(svg, `brace-pattern-${stamp()}.svg`, 'image/svg+xml');
 }
-function saveDesign() {
+// ---------------------------------------------------------- STL export: the solid brace with its cutouts
+function segD2(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+  let t = L ? ((px - ax) * dx + (py - ay) * dy) / L : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const qx = ax + t * dx - px, qy = ay + t * dy - py;
+  return qx * qx + qy * qy;
+}
+// signed "material" value per mesh vertex (> 0 = material), the same rules as the mask:
+// trim line, cutouts, and the edge margin that keeps material along the trim line
+function materialField() {
+  const D = ed.D, { UV, nv } = D, rim = ed.rim, O = D.outline, R = rim + 20;
+  const onOutline = new Uint8Array(nv);
+  for (const i of D.outlineIdx) onOutline[i] = 1;
+  // distance to the trim line, capped at R (segments bucketed in a grid)
+  const cell = 20, gx0 = D.bbox.minx - R, gy0 = D.bbox.miny - R;
+  const gw = Math.ceil((D.bbox.maxx - D.bbox.minx + 2 * R) / cell) + 1, gh = Math.ceil((D.bbox.maxy - D.bbox.miny + 2 * R) / cell) + 1;
+  const grid = Array.from({ length: gw * gh }, () => []);
+  for (let k = 0; k < O.length; k++) {
+    const a = O[k], b = O[(k + 1) % O.length];
+    const x0 = Math.floor((Math.min(a[0], b[0]) - gx0) / cell), x1 = Math.floor((Math.max(a[0], b[0]) - gx0) / cell);
+    const y0 = Math.floor((Math.min(a[1], b[1]) - gy0) / cell), y1 = Math.floor((Math.max(a[1], b[1]) - gy0) / cell);
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) grid[y * gw + x].push(k);
+  }
+  const reach = Math.ceil(R / cell);
+  const fO = new Float32Array(nv), fC = new Float32Array(nv).fill(-R);
+  for (let i = 0; i < nv; i++) {
+    if (onOutline[i]) { fO[i] = 1e-4; continue; }
+    const x = UV[2 * i], y = UV[2 * i + 1], cx = Math.floor((x - gx0) / cell), cy = Math.floor((y - gy0) / cell);
+    let d2 = R * R;
+    for (let yy = cy - reach; yy <= cy + reach; yy++) for (let xx = cx - reach; xx <= cx + reach; xx++) {
+      if (xx < 0 || yy < 0 || xx >= gw || yy >= gh) continue;
+      for (const k of grid[yy * gw + xx]) { const a = O[k], b = O[(k + 1) % O.length]; const q = segD2(x, y, a[0], a[1], b[0], b[1]); if (q < d2) d2 = q; }
+    }
+    fO[i] = Math.max(1e-4, Math.sqrt(d2));
+  }
+  for (const c of ed.cutouts) {                     // signed distance to each cutout (+ inside), union = max
+    const P = polyOf(c), b = bbOf(c);
+    for (let i = 0; i < nv; i++) {
+      const x = UV[2 * i], y = UV[2 * i + 1];
+      if (x < b.x0 - R || x > b.x1 + R || y < b.y0 - R || y > b.y1 + R) continue;
+      let d2 = Infinity;
+      for (let k = 0; k < P.length; k++) { const a = P[k], q = P[(k + 1) % P.length]; const v = segD2(x, y, a[0], a[1], q[0], q[1]); if (v < d2) d2 = v; }
+      const d = Math.sqrt(d2), s = pointInPoly(x, y, P) ? d : -d;
+      if (s > fC[i]) fC[i] = s;
+    }
+  }
+  const f = new Float32Array(nv);
+  for (let i = 0; i < nv; i++) {
+    let v = Math.min(fO[i], Math.max(-fC[i], rim - fO[i]));
+    if (Math.abs(v) < 1e-5) v = 1e-5;                // no vertex exactly on the cut line
+    f[i] = v;
+  }
+  return f;
+}
+// clip the skin-side mesh to the material (marching triangles), then close it into a solid of thickness t
+function buildSolid(f, t) {
+  const D = ed.D, { XYZ, N, nv } = D;
+  const pos = [], nrm = [], vid = new Int32Array(nv).fill(-1), cut = new Map(), tris = [];
+  const addV = (p, n) => { pos.push(p[0], p[1], p[2]); nrm.push(n[0], n[1], n[2]); return pos.length / 3 - 1; };
+  const V = (i) => (vid[i] >= 0 ? vid[i] : (vid[i] = addV([XYZ[3 * i], XYZ[3 * i + 1], XYZ[3 * i + 2]], [N[3 * i], N[3 * i + 1], N[3 * i + 2]])));
+  const E = (i, j) => {
+    const key = i < j ? i * nv + j : j * nv + i;
+    let v = cut.get(key);
+    if (v === undefined) {
+      const s = f[i] / (f[i] - f[j]), p = [0, 0, 0], n = [0, 0, 0];
+      for (let d = 0; d < 3; d++) { p[d] = XYZ[3 * i + d] + s * (XYZ[3 * j + d] - XYZ[3 * i + d]); n[d] = N[3 * i + d] + s * (N[3 * j + d] - N[3 * i + d]); }
+      const l = Math.hypot(...n) || 1;
+      v = addV(p, n.map((x) => x / l));
+      cut.set(key, v);
+    }
+    return v;
+  };
+  for (let fi = 0; fi < D.nf; fi++) {
+    const c = corners(D, fi, 3);                     // winding with outward normal
+    const ins = c.map((i) => f[i] > 0);
+    if (!ins[0] && !ins[1] && !ins[2]) continue;
+    if (ins[0] && ins[1] && ins[2]) { tris.push(V(c[0]), V(c[1]), V(c[2])); continue; }
+    const poly = [];
+    for (let k = 0; k < 3; k++) {
+      const a = c[k], b = c[(k + 1) % 3];
+      if (ins[k]) poly.push(V(a));
+      if (ins[k] !== ins[(k + 1) % 3]) poly.push(E(a, b));
+    }
+    for (let k = 1; k + 1 < poly.length; k++) tris.push(poly[0], poly[k], poly[k + 1]);
+  }
+  // solid: outer = p + t n (outward winding), inner = p (reversed), walls along every boundary edge
+  const M = pos.length / 3, P = new Float32Array(M * 6);
+  for (let i = 0; i < M; i++) for (let d = 0; d < 3; d++) {
+    P[3 * i + d] = pos[3 * i + d] + t * nrm[3 * i + d];
+    P[3 * (M + i) + d] = pos[3 * i + d];
+  }
+  const directed = new Set();
+  for (let k = 0; k < tris.length; k += 3) for (let e = 0; e < 3; e++) directed.add(tris[k + e] * M + tris[k + (e + 1) % 3]);
+  const T = [];
+  for (let k = 0; k < tris.length; k += 3) {
+    const a = tris[k], b = tris[k + 1], c = tris[k + 2];
+    T.push(a, b, c, M + a, M + c, M + b);
+    for (const [u, v] of [[a, b], [b, c], [c, a]]) {
+      if (!directed.has(v * M + u)) T.push(v, u, M + u, v, M + u, M + v);   // boundary edge: wall quad
+    }
+  }
+  return { P, T: Uint32Array.from(T) };
+}
+function stlBlob(P, T, header) {
+  const n = T.length / 3, buf = new ArrayBuffer(84 + 50 * n), dv = new DataView(buf);
+  const h = new TextEncoder().encode(header.slice(0, 79));
+  new Uint8Array(buf, 0, h.length).set(h);
+  dv.setUint32(80, n, true);
+  let o = 84;
+  for (let k = 0; k < T.length; k += 3) {
+    const a = 3 * T[k], b = 3 * T[k + 1], c = 3 * T[k + 2];
+    const ux = P[b] - P[a], uy = P[b + 1] - P[a + 1], uz = P[b + 2] - P[a + 2], vx = P[c] - P[a], vy = P[c + 1] - P[a + 1], vz = P[c + 2] - P[a + 2];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    for (const v of [nx / l, ny / l, nz / l]) { dv.setFloat32(o, v, true); o += 4; }
+    for (const i of [a, b, c]) for (let d = 0; d < 3; d++) { dv.setFloat32(o, P[i + d], true); o += 4; }
+    o += 2;
+  }
+  return new Blob([buf], { type: 'model/stl' });
+}
+function braceHeight() {
+  let z0 = Infinity, z1 = -Infinity;
+  for (let i = 2; i < ed.D.XYZ.length; i += 3) { z0 = Math.min(z0, ed.D.XYZ[i]); z1 = Math.max(z1, ed.D.XYZ[i]); }
+  return z1 - z0;
+}
+const MINI_HEIGHT = 60, MINI_MIN_WALL = 1.2;
+function miniSpec() {
+  const s = MINI_HEIGHT / braceHeight();
+  return { s, wall: Math.max(ed.thickness * s, MINI_MIN_WALL) };
+}
+function makeSTL(kind) {
+  const mini = kind === 'mini', spec = miniSpec();
+  const t = mini ? spec.wall / spec.s : ed.thickness;          // mini: wall thickened so it can be printed
+  const { P, T } = buildSolid(materialField(), t);
+  if (mini) {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z0 = Infinity;
+    for (let i = 0; i < P.length; i += 3) { x0 = Math.min(x0, P[i]); x1 = Math.max(x1, P[i]); y0 = Math.min(y0, P[i + 1]); y1 = Math.max(y1, P[i + 1]); z0 = Math.min(z0, P[i + 2]); }
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    for (let i = 0; i < P.length; i += 3) { P[i] = (P[i] - cx) * spec.s; P[i + 1] = (P[i + 1] - cy) * spec.s; P[i + 2] = (P[i + 2] - z0) * spec.s; }
+  } else {
+    const c = ed.D.meta.center_mm || [0, 0, 0];               // back to the body.stl coordinate frame
+    for (let i = 0; i < P.length; i += 3) for (let d = 0; d < 3; d++) P[i + d] += c[d];
+  }
+  let z0 = Infinity, z1 = -Infinity;
+  for (let i = 2; i < P.length; i += 3) { z0 = Math.min(z0, P[i]); z1 = Math.max(z1, P[i]); }
+  const blob = stlBlob(P, T, `Brace Cutout Designer ${mini ? 'mini' : 'full-size'} - research prototype`);
+  const name = `brace-${mini ? 'mini60' : 'full'}-${stamp()}.stl`;
+  const note = mini
+    ? `${fmt(z1 - z0, 1)} mm tall · scale 1:${fmt(1 / spec.s, 1)} · wall ${fmt(spec.wall, 1)} mm`
+    : `${fmt(z1 - z0, 0)} mm tall · wall ${fmt(ed.thickness, 1)} mm · body.stl coordinates`;
+  return { blob, name, note: `${note} · ${(T.length / 3).toLocaleString('en-US')} triangles` };
+}
+async function saveFile(p) {
+  if (COARSE && navigator.canShare) {               // iPad: the share sheet (Save to Files, AirDrop, ...)
+    for (const type of [p.blob.type, 'application/octet-stream']) {
+      const file = new File([p.blob], p.name, { type });
+      if (navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: p.name }); return true; } catch (err) { if (err.name === 'AbortError') return false; }
+        break;
+      }
+    }
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(p.blob);
+  a.download = p.name;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  return true;
+}
+function openSaveDialog() {
+  const spec = miniSpec(), H = braceHeight();
+  $('info-full').textContent = `Solid brace with cutouts, ${fmt(H, 0)} mm tall, wall ${fmt(ed.thickness, 1)} mm, same coordinates as body.stl`;
+  $('info-mini').textContent = `For quick 3D printing: scale 1:${fmt(1 / spec.s, 1)}, wall ${fmt(spec.wall, 1)} mm` +
+    (spec.wall > ed.thickness * spec.s + 1e-6 ? ` (thickened from ${fmt(ed.thickness * spec.s, 2)} mm so it prints)` : '');
+  $('save-status').textContent = '';
+  $('save-file').hidden = true;
+  ed.prepared = null;
+  $('dlg-save').showModal();
+}
+async function prepareSave(kind) {
+  $('save-file').hidden = true;
+  $('save-status').textContent = 'Preparing…';
+  await new Promise((r) => setTimeout(r, 30));      // let the message paint first
+  try {
+    ed.prepared = kind === 'json' ? designFile() : makeSTL(kind);
+  } catch (err) {
+    $('save-status').textContent = `Could not make the file: ${err.message}`;
+    return;
+  }
+  const p = ed.prepared;
+  $('save-status').textContent = `${p.name} · ${fmt(p.blob.size / 1e6, 1)} MB · ${p.note}`;
+  if (COARSE) $('save-file').hidden = false;        // iPad: a fresh tap is needed to open the share sheet
+  else saveFile(p);
+}
+
+function designFile() {
   const m = ed.D.meta;
   const o = { format: 'brace-cutout-design', version: 2, base: { source: m.source, created: m.created, faces: m.faces, bbox2d_mm: m.bbox2d_mm },
     thickness: ed.thickness, rim: ed.rim, cutouts: ed.cutouts.map((c) => ({ pts: c.pts.map((p) => [+p[0].toFixed(3), +p[1].toFixed(3)]) })) };
-  download(JSON.stringify(o, null, 1), `brace-design-${stamp()}.json`, 'application/json');
+  return { blob: new Blob([JSON.stringify(o, null, 1)], { type: 'application/json' }), name: `brace-design-${stamp()}.json`,
+    note: 'reopen it with “Open design”' };
 }
 function openDesign(file) {
   const rd = new FileReader();
@@ -1497,19 +1713,7 @@ function openDesign(file) {
   };
   rd.readAsText(file);
 }
-async function download(text, name, type) {
-  if (COARSE && navigator.canShare) {               // iPad: the share sheet (Save to Files, AirDrop, ...)
-    const file = new File([text], name, { type });
-    if (navigator.canShare({ files: [file] })) {
-      try { await navigator.share({ files: [file], title: name }); return; } catch (err) { if (err.name === 'AbortError') return; }
-    }
-  }
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([text], { type }));
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-}
+function download(text, name, type) { return saveFile({ blob: new Blob([text], { type }), name }); }
 function stamp() { const d = new Date(), p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`; }
 function renderLegend() {
   const D = ed.D, share = new Float64Array(6);
@@ -1598,12 +1802,15 @@ function bindUI() {
   $('poly-back').addEventListener('click', () => { if (!ed.drawing) return; ed.drawing.pts.pop(); if (!ed.drawing.pts.length) ed.drawing = null; update3DCurve(); drawOverlay(); });
   $('poly-cancel').addEventListener('click', () => { ed.drawing = null; update3DCurve(); drawOverlay(); });
   $('btn-svg').addEventListener('click', exportSVG);
-  $('btn-save').addEventListener('click', saveDesign);
+  $('btn-save').addEventListener('click', openSaveDialog);
+  for (const b of document.querySelectorAll('#dlg-save .opt')) b.addEventListener('click', () => prepareSave(b.dataset.kind));
+  $('save-file').addEventListener('click', () => { if (ed.prepared) saveFile(ed.prepared); });
+  $('save-close').addEventListener('click', () => $('dlg-save').close());
   $('btn-open').addEventListener('click', () => $('file-open').click());
   $('file-open').addEventListener('change', (e) => { if (e.target.files[0]) openDesign(e.target.files[0]); e.target.value = ''; });
 
   addEventListener('keydown', (e) => {
-    if (e.target.matches('input[type="text"], input[type="number"], textarea')) return;
+    if (e.target.matches('input[type="text"], input[type="number"], textarea') || $('dlg-save').open) return;
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); return; }
